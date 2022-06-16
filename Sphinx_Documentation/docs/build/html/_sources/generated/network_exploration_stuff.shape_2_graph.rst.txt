@@ -1,0 +1,6 @@
+﻿network\_exploration\_stuff.shape\_2\_graph
+===========================================
+
+.. currentmodule:: network_exploration_stuff
+
+.. autofunction:: shape_2_graph

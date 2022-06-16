@@ -1,0 +1,477 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Usage &#8212; Network Exploration 0.1 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css" />
+    <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/doctools.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="TODO" href="TODO.html" />
+    <link rel="prev" title="Welcome to Network Exploration’s documentation!" href="index.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="usage">
+<h1>Usage<a class="headerlink" href="#usage" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="package-import">
+<span id="import"></span><h2>Package import<a class="headerlink" href="#package-import" title="Permalink to this headline">¶</a></h2>
+<p>For now, to use the package, create new scripts within the same folder and use the following python line:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">network_exploration_stuff</span> <span class="k">as</span> <span class="nn">mynet</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="available-functions">
+<h2>Available Functions<a class="headerlink" href="#available-functions" title="Permalink to this headline">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="network_exploration_stuff.shape_2_graph">
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">shape_2_graph</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.shape_2_graph" title="Permalink to this definition">¶</a></dt>
+<dd><p>Extracts road network from shapefile.</p>
+<p>This function takes an input path to a .shp file (assuming the associated .shp, .shx, .dbf, etc. are all in the same folder)
+and extracts/returns the OpenStreetMap road network. This function automatically pulls the speed and travel time information,
+which are necessary components in further calculations.</p>
+<p><strong>Important Notes</strong></p>
+<p>Ensure that the shapefile area has a sufficent buffer to capture enough of the road network.
+For example, if the AOI is a block group, residents might require driving outside bounadry to get to areas within
+and excluding roadnetworks, espcially those that border the AOI, can lead to errors.</p>
+<div class="admonition-todo admonition" id="id1">
+<p class="admonition-title">Todo</p>
+<p>Only potential improvement is to include function to add a buffer to AOI instead of requiring that the user automatically do this,
+but this is not the most meaningful improvement</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>source</strong> (<em>str</em>) – Path to .shp file of the area of interest</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>G</strong>, the resultant road network from OpenStreetMap</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>networkx.MultiDiGraph</p>
+</dd>
+</dl>
+</dd></dl>
+
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+<dl class="py function">
+<dt class="sig sig-object py" id="network_exploration_stuff.save_2_disk">
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">save_2_disk</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'AOI_Graph'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.save_2_disk" title="Permalink to this definition">¶</a></dt>
+<dd><p>Save network as graphxml file.</p>
+<p>Once saved, the graph can be reloaded in for future analysis. The User avoids having to redownload 
+the same graph multiple times.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>G</strong> (<em>networkx.Graph</em><em> [</em><em>Multi</em><em>, </em><em>MultiDi</em><em>, </em><em>Di</em><em>]</em>) – Input graph to be saved</p></li>
+<li><p><strong>path</strong> (<em>str</em>) – Path to folder where graph will be saved</p></li>
+<li><p><strong>name</strong> (<em>str</em>) – Name the graph will be saved as. <em>Default=’AOI_Graph</em></p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+<dl class="py function">
+<dt class="sig sig-object py" id="network_exploration_stuff.read_graph_from_disk">
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">read_graph_from_disk</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'AOI_Graph'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.read_graph_from_disk" title="Permalink to this definition">¶</a></dt>
+<dd><p>Open a saved graphxml file.</p>
+<p>This works in conjunction with <a class="reference internal" href="#network_exploration_stuff.save_2_disk" title="network_exploration_stuff.save_2_disk"><code class="xref py py-func docutils literal notranslate"><span class="pre">save_2_disk()</span></code></a>, opening a saved graphxml file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path</strong> (<em>str</em>) – Path to folder where graphxml file is saved.</p></li>
+<li><p><strong>name</strong> (<em>str</em>) – Name of the graphxml file. <em>Default=’AOI_Graph’</em></p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>G</strong>, the opened graph network.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>networkx.Graph [Multi, MultiDi, Di]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+<dl class="py function">
+<dt class="sig sig-object py" id="network_exploration_stuff.rename">
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">rename</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.rename" title="Permalink to this definition">¶</a></dt>
+<dd><p>Rename nodes from 1 to N, the total number of nodes.</p>
+<p>This function is useful after extracting network using OSMnx, and makes referencing nodes/paths easier.
+It serves no specific purpose but I think it is still useful.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>G</strong> (<em>networkx.Graph</em><em> [</em><em>Multi</em><em>, </em><em>MultiDi</em><em>, </em><em>Di</em><em>]</em>) – Graph network</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>G</strong>, renamed graph network</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>networkx.Graph [Multi, MultiDi, Di]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+<dl class="py function">
+<dt class="sig sig-object py" id="network_exploration_stuff.parallel_edges">
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">parallel_edges</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.parallel_edges" title="Permalink to this definition">¶</a></dt>
+<dd><p>Find parallel edges in graph network.</p>
+<p>A lot of network algorithms in NetworkX require that networks be DiGraphs, or directional graphs.
+When extracting road networks with OSMnx, they are often returned as MultiDiGraphs, meaning they could potentially have 
+parallel edges. This function determines if parallel edges exists, and converting between MultiDiGraphs to DiGraphs could
+lead to some sort of error.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>G</strong> (<em>networkx.Graph</em><em> [</em><em>Multi</em><em>, </em><em>MultiDi</em><em>, </em><em>Di</em><em>]</em>) – Graph network</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>Bool</strong>, <em>True</em> if parallel edges exist, otherwise <em>False</em></p></li>
+<li><p><strong>parallel_edges</strong>, list of parallel edges, <em>[[u,v,num_edges],…]</em></p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+<dl class="py function">
+<dt class="sig sig-object py" id="network_exploration_stuff.random_shortest_path">
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">random_shortest_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">res_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dest_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.random_shortest_path" title="Permalink to this definition">¶</a></dt>
+<dd><p>Shortest path between a random residential parcel and all of a given resource.</p>
+<p>This function takes a set of residential points, chooses one at random, and then 
+routes it to every destination point (i.e., some given resource). This function is capable of producing
+a figure that also shows how that residential parcel would be routed to each of the destination points.
+The OSMnx function used in this function is able to accept MultiDiGraphs, unlike some others used later on.</p>
+<p><strong>Important Notes</strong></p>
+<p>This function finds the shortest path from the closest node (i.e., intersection) of a residential parcel and the 
+closest node (i.e., intersection) for each destination. <strong>It is worth considering changing this methodology</strong>, adding nodes
+and edges from the points themselves, but this requires further exploration.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>G</strong> (<em>networkx.Graph</em><em> [</em><em>Multi</em><em>, </em><em>MultiDi</em><em>, </em><em>Di</em><em>]</em>) – Graph network</p></li>
+<li><p><strong>res_points</strong> (<em>geopandas.GeoDataFrame</em>) – Point locations of all of the residential parcels</p></li>
+<li><p><strong>dest_points</strong> (<em>geopandas.GeoDataFrame</em>) – Point locations of all of the resources the random residential parcel is to be routed to</p></li>
+<li><p><strong>plot</strong> (<em>bool</em>) – Whether or not a plot should be created, <em>Default=False</em></p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>routes</strong>, list of shortest paths, each path is a list of node IDs.</p></li>
+<li><p><strong>figure</strong>, matplotlib figure object <em>(optional)</em></p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>list or tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+<dl class="py function">
+<dt class="sig sig-object py" id="network_exploration_stuff.min_cost_flow_parcels">
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">min_cost_flow_parcels</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">res_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dest_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_demand</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'demand'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_capacity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'capacity'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'travel_time'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.min_cost_flow_parcels" title="Permalink to this definition">¶</a></dt>
+<dd><p>Find the minimum cost flow of all residential parcels to a given resource.</p>
+<p>Given a set of sources (residential parcels), the minimum cost flow of all sources to sinks (given resource type or destinations)
+is determined. Sources send demand, and are therefore given a negative value. Sinks recieve demand, and are therefore given a positive 
+value. This notation is derived from the NetworkX package.</p>
+<p>Due to snapping methodology (<em>see important notes below</em>), source demand is the sum of the nearest parcels. If the nearest source and sink 
+share the same node (i.e., a residential parcel and a grocery store share the same intersection), demand is set to zero. 
+Justification for this is if you share the same nearest intersection then the resource is within walking distince.</p>
+<p>Because we do not know how much flow goes to each resource destination, each destination point is connected to the same artifical sink,
+which is given the total positive demand.</p>
+<p>If this function returns an error, than every residential parcel cannot reach the resource.</p>
+<p><strong>Important Notes</strong></p>
+<p>Similar to <a class="reference internal" href="#network_exploration_stuff.random_shortest_path" title="network_exploration_stuff.random_shortest_path"><code class="xref py py-func docutils literal notranslate"><span class="pre">random_shortest_path()</span></code></a>, this function finds the shortest path from the closest node 
+(i.e., intersection) of residential parcels and the closest node (i.e., intersection) for each destination. 
+<strong>It is worth considering changing this methodology</strong>, adding nodes and edges from the points themselves, 
+but this requires further exploration.</p>
+<p>This function also does not fact in limits to a resource. In other words, there is no limit on the number of residential parcels
+that can go to any single resource location. <strong>This feature also needs further exploration.</strong></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>G</strong> (<em>networkx.Graph</em><em> [</em><em>Multi</em><em>, </em><em>MultiDi</em><em>, </em><em>Di</em><em>]</em>) – Graph network. Will be converted to DiGraph in function</p></li>
+<li><p><strong>res_points</strong> (<em>geopandas.GeoDataFrame</em>) – Point locations of all of the residential parcels</p></li>
+<li><p><strong>dest_points</strong> (<em>geopandas.GeoDataFrame</em>) – Point locations of all of the resources the random residential parcel is to be routed to</p></li>
+<li><p><strong>G_demand</strong> (<em>string</em>) – name of attribute in G refering to node demands, <em>Default=’demand’</em></p></li>
+<li><p><strong>G_capacity</strong> (<em>string</em>) – name of attribute in G refering to edge capacities, <em>Default=’capacity’</em></p></li>
+<li><p><strong>G_weight</strong> (<em>string</em>) – name of attribute in G refering to edge weights, <em>Default=’travel_time’</em></p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>flow_dictionary</strong>, dictionary of dictionaries keyed by nodes for edge flows</p></li>
+<li><p><strong>cost_of_flow</strong>, integer, total cost of all flow. If weight/cost is travel time, this is the total time for everyone to reach the resource (seconds).</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+<dt class="field-even">Raises</dt>
+<dd class="field-even"><p>nx.NetworkXUnfeasible if all demand cannot be satisfied, i.e., all residential parcels cannot reach the resource.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+<dl class="py function">
+<dt class="sig sig-object py" id="network_exploration_stuff.max_flow_parcels">
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">max_flow_parcels</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">res_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dest_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_capacity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'capacity'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'travel_time'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.max_flow_parcels" title="Permalink to this definition">¶</a></dt>
+<dd><p>Find maximum flow with minimum cost of a network between residential parcels and a given resource.</p>
+<p>Unlike <a class="reference internal" href="#network_exploration_stuff.min_cost_flow_parcels" title="network_exploration_stuff.min_cost_flow_parcels"><code class="xref py py-func docutils literal notranslate"><span class="pre">min_cost_flow_parcels()</span></code></a>, this function calculates the maximum flow from all of the residential parcels to a given resource.
+Meaning, this function is independent of whether or not every residential parcel can actually reach a resource.
+This function uses the same snapping methodology as <a class="reference internal" href="#network_exploration_stuff.min_cost_flow_parcels" title="network_exploration_stuff.min_cost_flow_parcels"><code class="xref py py-func docutils literal notranslate"><span class="pre">min_cost_flow_parcels()</span></code></a>, see there for comments on how this works.</p>
+<p>This function creates both an artifical source and sink between residential parcels and resouce locations respectively. Furthermore,
+the capacity that connects the artifical source to residential parcel intersections (see <a class="reference internal" href="#network_exploration_stuff.min_cost_flow_parcels" title="network_exploration_stuff.min_cost_flow_parcels"><code class="xref py py-func docutils literal notranslate"><span class="pre">min_cost_flow_parcels()</span></code></a> for discussion on method)
+is equal to the number of residential parcels that are close to that intersection. This way the maximum flow ends up being the maximum number
+of households.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>G</strong> (<em>networkx.Graph</em><em> [</em><em>Multi</em><em>, </em><em>MultiDi</em><em>, </em><em>Di</em><em>]</em>) – Graph network. Will be converted to DiGraph in function</p></li>
+<li><p><strong>res_points</strong> (<em>geopandas.GeoDataFrame</em>) – Point locations of all of the residential parcels</p></li>
+<li><p><strong>dest_points</strong> (<em>geopandas.GeoDataFrame</em>) – Point locations of all of the resources the random residential parcel is to be routed to</p></li>
+<li><p><strong>G_capacity</strong> (<em>string</em>) – name of attribute in G refering to edge capacities, <em>Default=’capacity’</em></p></li>
+<li><p><strong>G_weight</strong> (<em>string</em>) – name of attribute in G refering to edge weights, <em>Default=’travel_time’</em></p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>flow_dictionary</strong>, dictionary of dictionaries keyed by nodes for edge flows</p></li>
+<li><p><strong>cost_of_flow</strong>, integer, total cost of all flow. If weight/cost is travel time, this is the total time for everyone to reach the resource (seconds).</p></li>
+<li><p><strong>max_flow</strong>, integer, the maximum flow (i.e., households) that can access the resource</p></li>
+<li><p><strong>access</strong>, string, either ‘Complete’ or’Partial’, representing if every residential parcel can/cannot access the resource</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+<dl class="py function">
+<dt class="sig sig-object py" id="network_exploration_stuff.plot_aoi">
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">plot_aoi</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">res_parcels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">resource_parcels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">edge_width</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loss_access_parcels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scalebar</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inundation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">insets</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_loc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.plot_aoi" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a plot with commonly used features.</p>
+<p>This function has a variety of parameters to create quick figures that I commonly look at. This can be actively changed to add more/less features.
+<strong>Returns final figure, use plt.show() to see plot.</strong></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>G</strong> (<em>networkx.Graph</em><em> [</em><em>Multi</em><em>, </em><em>MultiDi</em><em>, </em><em>Di</em><em>]</em>) – Graph network</p></li>
+<li><p><strong>res_parcels</strong> (<em>geopandas.GeoDataframe</em>) – The residential parcels to be plotted. Default color is tan.</p></li>
+<li><p><strong>resource_parcels</strong> (<em>geopandas.GeoDataframe</em>) – The resource parcels to be plotted. Default color is blue.</p></li>
+<li><p><strong>edge_width</strong> (<em>string</em>) – <em>Optional</em>, attribute of <em>G</em> to scale road edges by (<em>Default=None</em>).</p></li>
+<li><p><strong>bbox</strong> (<em>geopandas.GeoDataframe</em>) – set boundary of figures. If <em>None</em>, bbox set to max boundary of <em>G</em>.</p></li>
+<li><p><strong>lose_access_parcels</strong> (<em>geopandas.GeoDataframe</em>) – The residential parcels that can no longer access a resource (i.e., due to flooding) (<em>Default=None</em>).</p></li>
+<li><p><strong>scalebar</strong> (<em>bool</em>) – If <em>True</em>, plots a scalebar (<em>Default=False</em>).</p></li>
+<li><p><strong>inundation</strong> – Raster of inundation to plot over figure. Use rasterio.open</p></li>
+<li><p><strong>insets</strong> (<em>list of strings</em>) – File locations of areas to create inset box outlines (<em>Default=None</em>).</p></li>
+<li><p><strong>save_loc</strong> (<em>string</em>) – Location to save figure (<em>Default=None</em>).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>fig</strong>, the produced figure</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>matplotlib figure</p>
+</dd>
+</dl>
+</dd></dl>
+
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+<dl class="py function">
+<dt class="sig sig-object py" id="network_exploration_stuff.summary_function">
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">summary_function</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.summary_function" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return quick summary information regarding a network.</p>
+<p>This could be expanded upon in the future to be able to quickly access various summary statistics.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>G</strong> (<em>networkx.Graph</em><em> [</em><em>Multi</em><em>, </em><em>MultiDi</em><em>, </em><em>Di</em><em>]</em>) – Graph network</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>num_edges</strong>, number of edges in the network</p></li>
+<li><p><strong>num_nodes</strong>, number of nodes in the network</p></li>
+<li><p><strong>figure</strong>, multiple histograms of network including types of roads, speeds, lengths, travel_times</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+<dl class="py function">
+<dt class="sig sig-object py" id="network_exploration_stuff.inundate_network">
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">inundate_network</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">CRS</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">32614</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inundation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.inundate_network" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a new graph network based on the imapct of an inundation layer.</p>
+<p>Currently - An inundation layer is overlayed on a graph network. The maximum depth that intersects each road segment (within a given 
+distance based on the type of road, <strong>this needs to become a parameter and should be customizable</strong>). That maximum depth is then equated 
+to a decrease in speed and/or capacity on that entire road segment (<strong>also needs attention</strong> because water on a road segment might only impact
+poritions of that segment).</p>
+<p>This function adds attributes including:</p>
+<ul class="simple">
+<li><p>max_inundation</p></li>
+<li><p>inundation_class</p></li>
+<li><p>inundation_capacity</p></li>
+<li><p>inundation_speed_kph</p></li>
+<li><p>inundation_travel_time</p></li>
+</ul>
+<p><strong>Important Note</strong> - There are a number of methodologies in which this can be accomplished, and others need to be explored further. The 
+documenation listed must be updated regularly whenever changes are made to reflect current options of this function. Just a few things that need
+to be addressed include:</p>
+<ul class="simple">
+<li><p>customizable road widths</p></li>
+<li><p>customizable impacts - based on the literature</p></li>
+<li><p>impact on partial segments compared to entire segment</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>G</strong> (<em>networkx.Graph</em><em> [</em><em>Multi</em><em>, </em><em>MultiDi</em><em>, </em><em>Di</em><em>]</em>) – The graph network</p></li>
+<li><p><strong>CRS</strong> (<em>int</em>) – Coordinate reference system to conduct overlay in. <em>Default=32614, eqivalent to UTM14N</em></p></li>
+<li><p><strong>path</strong> (<em>string</em>) – File path to save output graph network to.</p></li>
+<li><p><strong>inundation</strong> (<em>string</em>) – File path to inundation raster .tif</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>inundated_G</strong>, the impacted graph network.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>networkx.Graph [Multi, MultiDi, Di]</p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">Network Exploration</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Usage</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#package-import">Package import</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#available-functions">Available Functions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="TODO.html">TODO</a></li>
+<li class="toctree-l1"><a class="reference internal" href="API.html">API</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="index.html" title="previous chapter">Welcome to Network Exploration’s documentation!</a></li>
+      <li>Next: <a href="TODO.html" title="next chapter">TODO</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2022, Matthew Preisser.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 4.5.0</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/usage.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
