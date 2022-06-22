@@ -280,7 +280,85 @@ def parallel_edges(G=''):
 
 
 
-# TODO: Write a function that finds nearest points
+
+
+def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
+    '''
+    Return Graph with demand attribute based on snapping sources/sinks to nearest nodes (intersections).
+    
+    The purpose of this function is take a series of input locations and determine the nearest nodes (intersections) within a Graph network. It takes this information to create source and sink information. 
+
+    **Important Note**: The output graph has an attribute labeled G_demand, which shows the number of closest residential parcels to each unique intersection. Because these are considered sources, they have a negative demand. Sink locations, or the intersections that are closest to the the dest_points, will not have a demand value (G_demand == 0) because we do not know how much flow is going to that node until after a min-cost flow algorithm is run. I.e., to route properly, we end up creating an artifical sink and then decompose the flow to determine how much flow is going to each destination.
+
+    :param G:
+    :type G:
+    :param res_points:
+    :type res_points:
+    :param dest_points:
+    :type dest_points:
+    :param G_demand:
+    type G_demand:
+    :returns: 
+        - **G**, *networkx.DiGraph* with G_demand attribute showing source values (negative demand)
+        - **unique_origin_nodes**, *lst* of unique origin nodes
+        - **unique_dest_nodes**, *lst* of unqiue destination nodes
+        - **positive_demand**, *int* of the total positive demand across the network. **Does not include the residents that share a closest intersection with a resource parcel.**
+    :rtype: tuple
+
+
+    '''
+
+    # create empty lists for nodes of origins and destinations
+    origins = []
+    destinations = []
+    # append origins to have nearest node (intersection) of all res_points
+    for x in list(range(0, len(res_points))):
+        res_point = res_points.iloc[[x]]
+        res_lon = res_point['geometry'].x.iloc[0]
+        res_lat = res_point['geometry'].y.iloc[0]
+        origin = ox.distance.nearest_nodes(G, res_lon, res_lat)
+        origins.append(origin)
+    # append destinations to have nearest node (intersections) of all dest_points
+    for x in list(range(0, len(dest_points))):
+        des_point = dest_points.iloc[[x]]
+        des_lon = des_point['geometry'].x.iloc[0]
+        des_lat = des_point['geometry'].y.iloc[0]
+        destination = ox.distance.nearest_nodes(G, des_lon, des_lat)
+        destinations.append(destination)
+    # Create list of unique origins and destinations
+    unique_origin_nodes = np.unique(origins)
+    unique_dest_nodes = np.unique(destinations)
+    # Based on unique origins, determine negative demands (source values)
+    unique_origin_nodes_counts = {}
+    for unique_node in unique_origin_nodes:
+        count = np.count_nonzero(origins == unique_node)
+        unique_origin_nodes_counts[unique_node] = {G_demand: -1*count}
+    # set demand at  unique dest nodes to 0 (SEE TODO) - if a source and sink share an intersection, then we assume it is within walking distance and is always accessible
+    shared_nodes = []
+    for x in unique_dest_nodes:
+        unique_origin_nodes_counts[x] = {G_demand: 0}
+        # Remove from the unique origin nodes because no longer an origin
+        unique_origin_nodes = np.delete(
+            unique_origin_nodes, np.where(unique_origin_nodes==x))
+        # Create a list of shared nodes
+        shared_nodes.append(x)
+
+    # Convert graph to digraph format
+    # TODO: Need to see if this is having an impact on the output
+    G = nx.DiGraph(G)
+    # add source information (the negative demand value prev. calculated)
+    nx.set_node_attributes(G, unique_origin_nodes_counts)
+    # Calculate the positive demand: the sink demand
+    demand = 0
+    for x in unique_origin_nodes_counts:
+        demand += unique_origin_nodes_counts[x][G_demand]
+    positive_demand = demand*-1
+
+    return(G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes)
+
+
+
+# TODO: Write a function that finds nearest points with multiple matching methodologies
 # should put in one location a function that, based on a given input, that returns locations of nearest points on network
 # this way can have in one location the multiple methodologies on how I think this will be done
 
@@ -408,53 +486,21 @@ def min_cost_flow_parcels(G='', res_points='', dest_points='', G_demand='demand'
     # Travel times must be whole numbers -  round values if not whole numbers
     for x in G.edges:
         G.edges[x][G_weight] = round(G.edges[x][G_weight])
-    # find the nearest node for each parcel (origins and destinations)
-    # create empty lists for nodes
-    origins = []
-    destinations = []
-    # append origins to have nearest intersection of all res_points
-    for x in list(range(0, len(res_points))):
-        res_point = res_points.iloc[[x]]
-        res_lon = res_point['geometry'].x.iloc[0]
-        res_lat = res_point['geometry'].y.iloc[0]
-        origin = ox.distance.nearest_nodes(G, res_lon, res_lat)
-        origins.append(origin)
-    # append destinations to have nearest intersections of all dest_points
-    for x in list(range(0, len(dest_points))):
-        des_point = dest_points.iloc[[x]]
-        des_lon = des_point['geometry'].x.iloc[0]
-        des_lat = des_point['geometry'].y.iloc[0]
-        destination = ox.distance.nearest_nodes(G, des_lon, des_lat)
-        destinations.append(destination)
-    # find the number of unique origin nodes: count*-1 = demand
-    unique_origin_nodes = np.unique(origins)
-    unique_origin_nodes_counts = {}
-    for unique_node in unique_origin_nodes:
-        count = np.count_nonzero(origins == unique_node)
-        unique_origin_nodes_counts[unique_node] = {G_demand: -1*count}
-    # determine the unique destination nodes
-    unique_dest_nodes = np.unique(destinations)
-    # set demand at these unique dest nodes to 0 (SEE TODO)
-    for x in unique_dest_nodes:
-        unique_origin_nodes_counts[x] = {G_demand: 0}
-    # Graph must be in digraph format: convert multidigraph to digraph
-    # TODO: Need to see if this is having an impact on the output
-    G = nx.DiGraph(G)
-    # add source information (the negative demand value prev. calculated)
-    nx.set_node_attributes(G, unique_origin_nodes_counts)
-    # Calculate the positive demand: the sink demand
-    demand = 0
     
-    for x in unique_origin_nodes_counts:
-        demand += unique_origin_nodes_counts[x][G_demand]
-    positive_demand = demand*-1 
-    
-    # create artificial node with demand calc.
+    # Find the source and sink demands and append to graph G
+    G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes = nearest_nodes(
+        G=G, res_points=res_points, dest_points=dest_points, G_demand=G_demand)
+
+
+    # create artificial sink node with calculated total demand
     #    All sinks will go to this demand in order to balance equation
     G.add_nodes_from([(99999999, {G_demand: positive_demand})])
     # add edges from sinks to this artificial node
     for x in unique_dest_nodes:
-        G.add_edge(x, 99999999, G_weight=0)
+        kwargs = {f"{G_weight}": 0}
+        G.add_edge(x, 99999999, **kwargs)
+
+
     # run the min_cost_flow function to retrieve FlowDict
     try:
         flow_dictionary = nx.min_cost_flow(
@@ -466,7 +512,7 @@ def min_cost_flow_parcels(G='', res_points='', dest_points='', G_demand='demand'
         return None, None
 
 
-def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity', G_weight='travel_time'):
+def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity', G_weight='travel_time', G_demand='demand'):
     '''
     Find maximum flow with minimum cost of a network between residential parcels and a given resource.
     
@@ -498,53 +544,34 @@ def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity',
     :rtype: tuple
 
     '''
-    
+
     # Travel times must be whole numbers - just round values
     for x in G.edges:
         G.edges[x][G_weight] = round(G.edges[x][G_weight])
 
-    # find the nearest node for each parcel (origins and destinations)
-    # create empty lists for nodes
-    origins = []
-    destinations = []
-    # append origins to have nearest intersection of all res_points
-    for x in list(range(0, len(res_points))):
-        res_point = res_points.iloc[[x]]
-        res_lon = res_point['geometry'].x.iloc[0]
-        res_lat = res_point['geometry'].y.iloc[0]
-        origin = ox.distance.nearest_nodes(G, res_lon, res_lat)
-        origins.append(origin)
-    # append destinations to have nearest intersections of all dest_points
-    for x in list(range(0, len(dest_points))):
-        des_point = dest_points.iloc[[x]]
-        des_lon = des_point['geometry'].x.iloc[0]
-        des_lat = des_point['geometry'].y.iloc[0]
-        destination = ox.distance.nearest_nodes(G, des_lon, des_lat)
-        destinations.append(destination)
-    # add artifical origin node
-    G.add_nodes_from([(0)])
-    # find the number of unique origin nodes
-    # sums will be equal to number of res parcels
-    sums = 0
-    unique_origin_nodes = np.unique(origins)
-    for unique_node in unique_origin_nodes:
-        count = np.count_nonzero(origins == unique_node)
-        sums += count
-        kwargs = {f"{G_weight}": 0, f"{G_capacity}": count}  # TODO: KWARGS
-        # Create the aritifical source edges from the artificial origin, 0, to all origin nodes
-        # The capacity of each edge is the maximum demand
-        G.add_edge(0, unique_node, **kwargs)
+    # Find the source and sink demands and append to graph G
+    G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes = nearest_nodes(
+        G=G, res_points=res_points, dest_points=dest_points, G_demand=G_demand)
 
-    # determine the unique destination nodes
-    unique_dest_nodes = np.unique(destinations)
-    # Graph must be in digraph format: convert multidigraph to digraph
-    G = nx.DiGraph(G)
-    # create artificial destination node
-    #    All sinks will go to this demand in order to balance equation
-    G.add_nodes_from([(99999999)])
+    # add artifical source node
+    G.add_nodes_from([(0, {G_demand: positive_demand*-1})])
+    # add edge from artifical source node to real source nodes with 0 weight and capacity equal to demand
+    sums=0
+    for unique_node in unique_origin_nodes:
+        sums -= G.nodes[unique_node][G_demand]
+        kwargs = {f"{G_weight}": 0, f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}  # TODO: KWARGS
+        G.add_edge(0, unique_node, **kwargs)
+        # since we added an artificial source node, all original source nodes must have a zero demand
+        G.nodes[unique_node][G_demand]=0
+        
+    # create artificial sink node 
+    G.add_nodes_from([(99999999, {G_demand: positive_demand})])
     # add edges from sinks to this artificial node
     for x in unique_dest_nodes:
-        G.add_edge(x, 99999999, G_weight=0)
+        kwargs={f"{G_weight}":0}
+        G.add_edge(x, 99999999, **kwargs)
+
+
 
     # run the max_flow_min_cost function to retrieve FlowDict
     flow_dictionary = nx.max_flow_min_cost(
@@ -632,6 +659,12 @@ def plot_aoi(G='', res_parcels='',
     # plot roads, residential parcels, and resource parcels
     res_parcels.plot(ax=ax, color='antiquewhite', edgecolor='tan')
     resource_parcels.plot(ax=ax, color='cornflowerblue', edgecolor='royalblue')
+
+    #TODO: ADD FEATURE TO HIGHLIGHT NODES - USEFUL IN ORDER TO TRANSLATE RESULTS TO GRAPH QUICKLY WHILE TESTING 
+    # G_gdf_nodes.loc[[57],'geometry'].plot(ax=ax,color='red')
+    # G_gdf_nodes.loc[[56], 'geometry'].plot(ax=ax, color='green')
+    #### END TEST
+
 
     # option to plot loss of access parcels
     if loss_access_parcels is None:
@@ -934,3 +967,115 @@ def inundate_network(G='', CRS=32614, path='', inundation=''):
     new_graph = ox.graph_from_gdfs(nodes, edges)
     save_2_disk(G=new_graph, path=path, name='AOI_Graph_Inundated')
     return (new_graph)
+
+
+def flow_decomposition(G='', res_points='', dest_points='', G_demand='demand', G_capacity='capacity', G_weight='travel_time'):
+    '''
+    Given a network, G, decompose the maximum flow (w/ minimum cost) into optimized individual flow paths.
+
+
+    '''
+    
+    # Run max_flow_parcels to get flow dictionary
+    flow_dict, flow_cost, max_flow, access = max_flow_parcels(G=G, res_points=res_points, dest_points=dest_points, G_capacity=G_capacity, G_weight=G_weight, G_demand=G_demand)
+    
+    # Need to run nearest_nodes to get unique origins and destinations
+    # Travel times must be whole numbers -  round values if not whole numbers
+    for x in G.edges:
+        G.edges[x][G_weight] = round(G.edges[x][G_weight])
+
+    # Find the source and sink demands and append to graph G
+    G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes = nearest_nodes(
+        G=G, res_points=res_points, dest_points=dest_points, G_demand=G_demand)
+    # Create artificial source and sink
+    # add artifical source node
+    G.add_nodes_from([(0, {G_demand: positive_demand*-1})])
+    # add edge from artifical source node to real source nodes with 0 weight and capacity equal to demand
+    sums = 0
+    for unique_node in unique_origin_nodes:
+        sums -= G.nodes[unique_node][G_demand]
+        # TODO: KWARGS
+        # set the capacity of the edges from artifical source to actual source equal to the source flow
+        kwargs = {f"{G_weight}": 0,
+                  f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}
+        G.add_edge(0, unique_node, **kwargs)
+        # since we added an artificial source node, all original source nodes must have a zero demand
+        G.nodes[unique_node][G_demand] = 0
+
+    # create artificial sink node
+    G.add_nodes_from([(99999999, {G_demand: positive_demand})])
+    # add edges from sinks to this artificial node
+    for x in unique_dest_nodes:
+        kwargs={f"{G_weight}":0}
+        G.add_edge(x, 99999999, **kwargs)
+
+    #  create an intermediate graph from the flow dictionary
+    # This graph will only be made of edges that have a flow according to max_flow_min_cost algorithm
+    G_inter = nx.DiGraph()
+    for i in flow_dict:
+        for j in flow_dict[i]:
+            if flow_dict[i][j] >0:
+                kwargs = {f"{G_weight}": G[i][j][G_weight],
+                        'allowable_flow': flow_dict[i][j]}
+                G_inter.add_edge(i,j,**kwargs)
+    
+    # creat empty dictionary of decomposed path information
+    decomposed_paths = {}
+
+    # loop through all shortest paths from artifical source to artificial sink
+    while len(G_inter.edges)>0:
+        # Find the shortest path from the artifical source to artificial sink
+        path = ox.distance.shortest_path(G_inter,0,99999999,weight=G_weight)
+        # create empty list of flows
+        flows = []
+        # length of the shortest path
+        len_path=len(path)
+        # calculate the cost per unit flow along this path
+        cost = nx.path_weight(G_inter, path, weight=G_weight)
+        # for each edge in the path, append flows with the allowable flow
+        for idx, x in enumerate(path):
+            if idx==len_path-1:
+                pass
+            else:
+                flows.append(G_inter[path[idx]][path[idx+1]]['allowable_flow'])
+        # limiting flow is the minimum allowable flow along the edges in the path
+        limiting_flow=min(flows)
+        # for each edge along the path, subtract the limiting flow from allowable flow
+        # if the allowable flow is reduced to zero, remove the edge
+        for idx, x in enumerate(path):
+            if idx == len_path-1:
+                pass
+            else:
+                G_inter[path[idx]][path[idx+1]]['allowable_flow'] -= limiting_flow
+                if G_inter[path[idx]][path[idx+1]]['allowable_flow'] == 0:
+                    G_inter.remove_edge(path[idx],path[idx+1])
+        
+
+        # append the decomposed path dictionary with the necessary information
+        # the key for each decomposed path will be the origin node
+        origin = path[1]
+        sink = path[-2]
+        decomposed_paths[f'{origin}'] = {'Sink': sink, 'Path': path,
+                                        'Flow': limiting_flow, 'Cost Per Flow': cost}
+
+    # Need to now use decomposition information to create parcel insights
+    #source_insights
+        # for each source node:
+            # number of paths
+            # cost of each path
+            # destination of each path
+    #sink_insights
+        # for each sink node:
+            # number of paths that end there
+    #res_parcel_insights
+        # parcels that can walk?
+        # Relate parcel to nearest source node
+        # relate that parcel to one of the paths (w/associated cost and sink)
+            # for now, each source is same but in future one source might go to multiple sinks and therefore need a methodology to distribute these accordingly
+
+
+
+
+
+
+    return decomposed_paths
