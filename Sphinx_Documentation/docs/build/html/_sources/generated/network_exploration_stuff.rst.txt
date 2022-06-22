@@ -13,9 +13,11 @@
 
    .. autosummary::
    
+      flow_decomposition
       inundate_network
       max_flow_parcels
       min_cost_flow_parcels
+      nearest_nodes
       parallel_edges
       plot_aoi
       random_shortest_path

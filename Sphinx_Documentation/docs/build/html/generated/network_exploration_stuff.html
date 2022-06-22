@@ -40,14 +40,20 @@
 <col style="width: 90%" />
 </colgroup>
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.inundate_network" title="network_exploration_stuff.inundate_network"><code class="xref py py-obj docutils literal notranslate"><span class="pre">inundate_network</span></code></a>([G, CRS, path, inundation])</p></td>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">flow_decomposition</span></code>([G, res_points, ...])</p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.inundate_network" title="network_exploration_stuff.inundate_network"><code class="xref py py-obj docutils literal notranslate"><span class="pre">inundate_network</span></code></a>([G, CRS, path, inundation])</p></td>
 <td><p>Create a new graph network based on the imapct of an inundation layer.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.max_flow_parcels" title="network_exploration_stuff.max_flow_parcels"><code class="xref py py-obj docutils literal notranslate"><span class="pre">max_flow_parcels</span></code></a>([G, res_points, ...])</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.max_flow_parcels" title="network_exploration_stuff.max_flow_parcels"><code class="xref py py-obj docutils literal notranslate"><span class="pre">max_flow_parcels</span></code></a>([G, res_points, ...])</p></td>
 <td><p>Find maximum flow with minimum cost of a network between residential parcels and a given resource.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.min_cost_flow_parcels" title="network_exploration_stuff.min_cost_flow_parcels"><code class="xref py py-obj docutils literal notranslate"><span class="pre">min_cost_flow_parcels</span></code></a>([G, res_points, ...])</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.min_cost_flow_parcels" title="network_exploration_stuff.min_cost_flow_parcels"><code class="xref py py-obj docutils literal notranslate"><span class="pre">min_cost_flow_parcels</span></code></a>([G, res_points, ...])</p></td>
 <td><p>Find the minimum cost flow of all residential parcels to a given resource.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">nearest_nodes</span></code>([G, res_points, dest_points, ...])</p></td>
+<td><p>Return Graph with demand attribute based on snapping sources/sinks to nearest nodes (intersections).</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.parallel_edges" title="network_exploration_stuff.parallel_edges"><code class="xref py py-obj docutils literal notranslate"><span class="pre">parallel_edges</span></code></a>([G])</p></td>
 <td><p>Find parallel edges in graph network.</p></td>
