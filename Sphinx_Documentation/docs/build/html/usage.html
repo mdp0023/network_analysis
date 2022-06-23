@@ -272,7 +272,7 @@ of households.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>G</strong> (<em>networkx.Graph</em><em> [</em><em>Multi</em><em>, </em><em>MultiDi</em><em>, </em><em>Di</em><em>]</em>) – Graph network. Will be converted to DiGraph in function</p></li>
 <li><p><strong>res_points</strong> (<em>geopandas.GeoDataFrame</em>) – Point locations of all of the residential parcels</p></li>
-<li><p><strong>dest_points</strong> (<em>geopandas.GeoDataFrame</em>) – Point locations of all of the resources the random residential parcel is to be routed to</p></li>
+<li><p><strong>dest_points</strong> (<em>geopandas.GeoDataFrame</em>) – Point locations of all of the resources the residential parcels are to be routed to</p></li>
 <li><p><strong>G_capacity</strong> (<em>string</em>) – name of attribute in G refering to edge capacities, <em>Default=’capacity’</em></p></li>
 <li><p><strong>G_weight</strong> (<em>string</em>) – name of attribute in G refering to edge weights, <em>Default=’travel_time’</em></p></li>
 </ul>
@@ -392,6 +392,81 @@ to be addressed include:</p>
 </dd>
 <dt class="field-odd">Return type</dt>
 <dd class="field-odd"><p>networkx.Graph [Multi, MultiDi, Di]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+<dl class="py function">
+<dt class="sig sig-object py" id="network_exploration_stuff.nearest_nodes">
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">nearest_nodes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">res_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dest_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_demand</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'demand'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.nearest_nodes" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return Graph with demand attribute based on snapping sources/sinks to nearest nodes (intersections).</p>
+<p>The purpose of this function is take a series of input locations and determine the nearest nodes (intersections) within a Graph network. It takes this information to create source and sink information.</p>
+<p><strong>Important Note</strong>: The output graph has an attribute labeled G_demand, which shows the number of closest residential parcels to each unique intersection. Because these are considered sources, they have a negative demand. Sink locations, or the intersections that are closest to the the dest_points, will not have a demand value (G_demand == 0) because we do not know how much flow is going to that node until after a min-cost flow algorithm is run. I.e., to route properly, we end up creating an artifical sink and then decompose the flow to determine how much flow is going to each destination.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>G</strong> (<em>networkx.Graph</em><em> [</em><em>Multi</em><em>, </em><em>MultiDi</em><em>, </em><em>Di</em><em>]</em>) – Graph network</p></li>
+<li><p><strong>res_points</strong> (<em>geopandas.GeoDataFrame</em>) – Point locations of all of the residential parcels</p></li>
+<li><p><strong>dest_points</strong> (<em>geopandas.GeoDataFrame</em>) – Point locations of all of the resources the residential parcels are to be routed to</p></li>
+<li><p><strong>G_demand</strong> (<em>string</em>) – name of attribuet in G refering to node demand, <em>Default=’demand</em></p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>G</strong>, <em>networkx.DiGraph</em> with G_demand attribute showing source values (negative demand)</p></li>
+<li><p><strong>unique_origin_nodes</strong>, <em>lst</em> of unique origin nodes</p></li>
+<li><p><strong>unique_dest_nodes</strong>, <em>lst</em> of unqiue destination nodes</p></li>
+<li><p><strong>positive_demand</strong>, <em>int</em> of the total positive demand across the network. <strong>Does not include the residents that share a closest intersection with a resource parcel.</strong></p></li>
+<li><p><strong>Shared_nodes</strong>, <em>lst</em> of nodes that res and destination parcels share same nearest</p></li>
+<li><p><strong>res_points</strong>, <em>geopandas.GeoDataFrame</em>, residential points with appended attribute of ‘nearest_node’</p></li>
+<li><p><strong>dest_points</strong>, <em>geopandas.GeoDataFrame</em>, destination/sink points with appended attribute of ‘nearest_node’</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+<dl class="py function">
+<dt class="sig sig-object py" id="network_exploration_stuff.flow_decomposition">
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">flow_decomposition</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">res_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dest_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">res_locs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dest_locs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_demand</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'demand'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_capacity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'capacity'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'travel_time'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.flow_decomposition" title="Permalink to this definition">¶</a></dt>
+<dd><p>Given a network, G, decompose the maximum flow (w/ minimum cost) into individual flow paths.</p>
+<p>This function serves the role of taking a given network, calculating its maximum flow (with minimum cost), and decomposing the resultant network solution into a feasible series of individual flow pathways. A number of flow decomposition solutions can exist for any given network, <em>especially</em> under circumstance where a flow from the same sources travels along different paths. The decomposed information including path, sink, and cost of the path are related back to the residential and destination parcel boundaries for mapping purposes.</p>
+<p><strong>Important Note</strong> - This function is set up with the intention that all of the flow from one source may not go to the same sink or travel along the same pathway. This is not the case with how the maximum flow is currently calculated, but under more realisitic travel cost functions this will likely change.</p>
+<p><strong>Furthermore,</strong> this flow decomposition algorithm is just one possible solution. Flows are decomposed by looking at the shortest unit path (taking into account edge weight/costs) from the aritical source to sink. This “greedy” algorithm produces individual flow paths that will have a higher variance, giving preference to paths that are shorter.</p>
+<p>If multiple divering flow paths exist (i.e., same source but different paths/sinks), the function becomes <strong>stochastic</strong> and assigns a residential parcel (who has that source) a random sink, path, and cost that are representative of the distribution of sinks-paths-costs from that source (the sink-path-costs are all appropriately selected in that the cost reflects the path to that specific sink).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>G</strong> (<em>networkx.Graph</em><em> [</em><em>Multi</em><em>, </em><em>MultiDi</em><em>, </em><em>Di</em><em>]</em>) – The graph network</p></li>
+<li><p><strong>res_points</strong> (<em>geopandas.GeoDataFrame</em>) – Point locations of all of the residential parcels</p></li>
+<li><p><strong>dest_points</strong> (<em>geopandas.GeoDataFrame</em>) – Point locations of all of the resources the residential parcels are to be routed to</p></li>
+<li><p><strong>res_locs</strong> (<em>geopandas.GeoDataFrame</em>) – Polygons of all residential parcels</p></li>
+<li><p><strong>dest_locs</strong> (<em>geopandas.GeodataFrame</em>) – Polygons of all of a specific destination/resource</p></li>
+<li><p><strong>G_demand</strong> (<em>string</em>) – name of attribuet in G refering to node demand, <em>Default=’demand</em></p></li>
+<li><p><strong>G_capacity</strong> (<em>string</em>) – name of attribute in G refering to edge capacities, <em>Default=’capacity’</em></p></li>
+<li><p><strong>G_weight</strong> (<em>string</em>) – name of attribute in G refering to edge weights, <em>Default=’travel_time’</em></p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>decomposed_paths</strong>, dictionary of dictionaries keyed by unique source nodes</p></li>
+<li><p><strong>sink_insights</strong>, dictionary of dictionaries containing information about each sink</p></li>
+<li><p><strong>res_locs</strong>, geopandas.GeoDataFrame, residential parcels with flow information</p></li>
+<li><p><strong>dest_locs</strong>, geopandas.GeoDataFrame, resource/destination parcels with flow information</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>tuple</p>
 </dd>
 </dl>
 </dd></dl>

@@ -288,14 +288,14 @@ def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
 
     **Important Note**: The output graph has an attribute labeled G_demand, which shows the number of closest residential parcels to each unique intersection. Because these are considered sources, they have a negative demand. Sink locations, or the intersections that are closest to the the dest_points, will not have a demand value (G_demand == 0) because we do not know how much flow is going to that node until after a min-cost flow algorithm is run. I.e., to route properly, we end up creating an artifical sink and then decompose the flow to determine how much flow is going to each destination.
 
-    :param G:
-    :type G:
-    :param res_points:
-    :type res_points:
-    :param dest_points:
-    :type dest_points:
-    :param G_demand:
-    type G_demand:
+    :param G: Graph network
+    :type G: networkx.Graph [Multi, MultiDi, Di]
+    :param res_points: Point locations of all of the residential parcels
+    :type res_points: geopandas.GeoDataFrame
+    :param dest_points: Point locations of all of the resources the residential parcels are to be routed to
+    :type dest_points: geopandas.GeoDataFrame
+    :param G_demand: name of attribuet in G refering to node demand, *Default='demand*
+    :type G_demand: string
     :returns: 
         - **G**, *networkx.DiGraph* with G_demand attribute showing source values (negative demand)
         - **unique_origin_nodes**, *lst* of unique origin nodes
@@ -305,6 +305,7 @@ def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
         - **res_points**, *geopandas.GeoDataFrame*, residential points with appended attribute of 'nearest_node'
         - **dest_points**, *geopandas.GeoDataFrame*, destination/sink points with appended attribute of 'nearest_node'
     :rtype: tuple
+
 
     '''
 
@@ -999,12 +1000,14 @@ def flow_decomposition(G='', res_points='', dest_points='',res_locs='',dest_locs
     :param G_weight: name of attribute in G refering to edge weights, *Default='travel_time'* 
     :type G_weight: string      
 
-    : returns:
+    :returns:
         - **decomposed_paths**, dictionary of dictionaries keyed by unique source nodes
         - **sink_insights**, dictionary of dictionaries containing information about each sink
         - **res_locs**, geopandas.GeoDataFrame, residential parcels with flow information
         - **dest_locs**, geopandas.GeoDataFrame, resource/destination parcels with flow information
     :rtype: tuple
+
+
 
     '''
     

@@ -60,7 +60,13 @@ Available Functions
 
 .. autofunction:: network_exploration_stuff.inundate_network
 
+|
 
+.. autofunction:: network_exploration_stuff.nearest_nodes
+
+|
+
+.. autofunction:: network_exploration_stuff.flow_decomposition
 
 
 
