@@ -46,7 +46,7 @@ pd.set_option('display.max_columns', None)
 # TODO: move digraph conversion into function
 #   There are a lot of cross overs between digraph and multigraph, need to
 #   examine this in more detail
-# TODO: In plot aoi - allow it to accept a list of res parcels
+# TODO: In plot aoi - allow it to accept a list of dest parcels
 #   i.e., food and gas locations
 # TODO: When it comes to plotting, doing the different algorithms adds nodes
 #   and edges. Therefore, have to plot the un-manipulated networks
@@ -279,11 +279,6 @@ def parallel_edges(G=''):
     if len(parallel_edges) < 1:
         return False, [0]
 
-##############################
-# TODO: Write a function that finds nearest points with multiple matching methodologies
-# should put in one location a function that, based on a given input, that returns locations of nearest points on network
-# this way can have in one location the multiple methodologies on how I think this will be done
-
 
 def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
     '''
@@ -367,8 +362,6 @@ def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
     positive_demand = demand*-1
 
     return(G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points)
-
-##########################################################
 
 
 def random_shortest_path(G='', res_points='', dest_points='', plot=False):
