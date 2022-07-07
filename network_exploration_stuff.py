@@ -332,6 +332,10 @@ def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
         # add new column to des_points dataframe with nearest node
         dest_points.loc[res_points.index[x], 'nearest_node'] = int(destination)
 
+    # Creat the demand attribute and set all equal to 0
+    #TODO: make sure this has no impact on other functions
+        # it's not necessary - but is meant to keep values for every attribute instead of having missing data/holes in attributes
+    nx.set_node_attributes(G, values=[0], name=G_demand)
 
     # Create list of unique origins and destinations
     unique_origin_nodes = np.unique(origins)
@@ -356,6 +360,7 @@ def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
     G = nx.DiGraph(G)
     # add source information (the negative demand value prev. calculated)
     nx.set_node_attributes(G, unique_origin_nodes_counts)
+
     # Calculate the positive demand: the sink demand
     demand = 0
     for x in unique_origin_nodes_counts:
@@ -1133,6 +1138,8 @@ def flow_decomposition(G='', res_points='', dest_points='',res_locs='',dest_locs
         if missing_paths is True:
             # If no decomp_info, source node is not serviceable -> unreachable
             res_points.loc[res_points['nearest_node'] == node,['service']] = 'no'
+            res_points.loc[res_points['nearest_node']
+                           == node, ['cost_of_flow']] = np.NaN
 
         else:
             # If multiple paths from one source to sink exist, need to create lists that contain a representative distribution of possible paths
@@ -1201,5 +1208,6 @@ def flow_decomposition(G='', res_points='', dest_points='',res_locs='',dest_locs
 
     # return the decomposed paths dict of dict, the sink_insights dict of dict, and the res_locs/dest_locs geodataframes
     return decomposed_paths, sink_insights, res_locs, dest_locs
+
 
 
