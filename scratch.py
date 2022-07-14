@@ -1,5 +1,6 @@
 import network_exploration_stuff as mynet
 import logging
+import sys
 import networkx as nx
 import osmnx as ox
 import matplotlib.pyplot as plt
@@ -12,6 +13,9 @@ pd.set_option('display.max_rows', None)
 
 # CAPUTRE THE SHAPELY DEPRECIAITION WARNINGS
 logging.captureWarnings(True)
+
+# don't truncate output of numpy array
+np.set_printoptions(threshold=sys.maxsize)
 
 # VARIABLES USED #############################################################
 # file path
@@ -99,8 +103,12 @@ G_out, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, re
 
 
 # print the list of attribute names for eges and nodes
-print(list(list(G_out.edges(data=True))[0][-1].keys()))
-print(list(list(G_out.nodes(data=True))[0][-1].keys()))
+# print(list(list(G_out.edges(data=True))[0][-1].keys()))
+# print(list(list(G_out.nodes(data=True))[0][-1].keys()))
+
+
+output = mynet.traffic_assignment(G=G, res_points=res_points, dest_points=food_points, G_demand='demand')
+print(output)
 
 # print node values for a specific attribute
 #print(nx.get_node_attributes(G_out,'demand'))
@@ -108,6 +116,9 @@ print(list(list(G_out.nodes(data=True))[0][-1].keys()))
 #Number of streets that go through a node
 #print(G.nodes(data='street_count'))
 
+
+
+# FIGS FOR PRESENTATION
 
 # fig, ax = plt.subplots()
 # res_locs_n.plot(ax=ax,column='cost_of_flow', legend=True, cmap='viridis')
