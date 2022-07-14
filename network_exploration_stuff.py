@@ -335,7 +335,8 @@ def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
     # Creat the demand attribute and set all equal to 0
     #TODO: make sure this has no impact on other functions
         # it's not necessary - but is meant to keep values for every attribute instead of having missing data/holes in attributes
-    nx.set_node_attributes(G, values=[0], name=G_demand)
+        # THIS IS IMPACTING G ELSEWHERE AS WELL - MIGHT BE MAJOR ERROR
+    nx.set_node_attributes(G, values=0, name=G_demand)
 
     # Create list of unique origins and destinations
     unique_origin_nodes = np.unique(origins)
@@ -1211,3 +1212,471 @@ def flow_decomposition(G='', res_points='', dest_points='',res_locs='',dest_locs
 
 
 
+
+def shortestPath(origin, capacity_array, weight_array):
+    """
+    This method finds the shortest path from origin to all other nodes
+    in the network.  You should use the lists already created for backnode
+    and cost labels, and fill them with the correct values.  You can use
+    any of the shortest path algorithms taught in class.
+
+    Use the constants utils.NO_PATH_EXISTS in place of '-1' when the
+    backnode is undefined (i.e. for the origin or if there is no path to
+    that node), and utils.INFINITY for the initial values of cost labels.
+    """
+    # Need the number of nodes for calculations
+    numnodes = np.shape(capacity_array)[0]
+
+    # Set up backnode and cost lists to return
+    backnode = [-1] * numnodes
+    costlabel = [np.inf] * numnodes
+
+    # I am going to be implementing Dijkstra's Algorithm
+
+    # Step 1: Initialize all labels Li=infinity origin Ls=0
+    # costlabel already initialized, need to change cost label for origin
+    costlabel[origin] = 0
+    # Also creating f_label for final labels
+    f_label = []
+
+    # Step 2: Initialize SEL with origin
+    sel = [origin]
+    x = 0
+    # Create termination loop, if sel empty, terminate
+    while len(sel) > 0:
+        # Step 3: Choose a node i from SEL with minimum L
+        # doing this by creating a list of cost labels for each node in SEL
+        labels = []
+        for node in sel:
+            labels.append(costlabel[node])
+        # node we want is popped from SEL (the index of min in label)
+        node_i = sel.pop(labels.index(min(labels)))
+
+        # Step 4: for all arc (i,j) repeat following
+        for node_j, matrix_value in enumerate(capacity_array[node_i]):
+            # if matrix_value is equal to -1, no link exist
+            if matrix_value == -1:
+                pass
+            # also need to skip nodes in f, because already finalized
+            elif node_j in f_label:
+                pass
+            else:
+                # Step 4a: calculate costlabel temp
+                l_temp = costlabel[node_i] + weight_array[node_i][node_j]
+                # Step 4b: if new path is shorter, update cost and backnode
+                if l_temp < costlabel[node_j]:
+                    costlabel[node_j] = l_temp
+                    backnode[node_j] = node_i
+                # Step 4c: add j tos can list if it is not already there
+                if node_j not in sel:
+                    sel.append(node_j)
+                # Step 5: add i to f_label
+                f_label.append(node_i)
+    backnode=np.asarray(backnode)
+    costlabel=np.asarray(costlabel)
+    # backnodes equal to list indicating previous node in shortest path
+    # costlabel is list of costs associated with each node]
+    return (backnode, costlabel)
+
+def pathTo(backnode, costlabel, origin, destination):
+    cost = costlabel[destination]
+    path = [destination]
+    idx = destination
+    while idx > 0:
+        idx = backnode[idx]
+        path.append(idx)
+    path.append(origin)
+    path.reverse()
+    path.pop(0)
+    path.pop(0)
+    path=np.asarray(path)
+    cost=np.asarray(cost)
+    return(path, cost)
+
+#I DON'T THINK I NEED maxFlow OR mod_search
+def maxFlow(source, sink, numnodes, capacity_array, weight_array):
+    """
+    This method finds a maximum flow in the network.  Return a tuple
+    containing the total amount of flow shipped, and the flow on each link
+    in a list-of-lists (which takes the same form as the adjacency matrix).
+    These are already created for you at the start of the method, fill them
+    in with your implementation of minimum cost flow.
+    """
+
+    # Set up network flows matrix; flow[i][j] should have the
+    # value of x_ij in the max-flow algorithm.
+    totalFlow = 0
+    flow = list()
+    for i in range(numnodes):
+        flow.append([0] * numnodes)
+
+    # I am using the augmenting path method
+    # Step 1: initialize the flow (done above with total flow and flow variables)
+
+    # Step 2: identify unidriected path pi connecting s and t
+    # this is my modified search method (see method for specifics)
+    reachable, backnode = mod_search(source=source, flow=flow, numnodes=numnodes, capacity_array=capacity_array)
+    # Based on criteria in mod_search, if sink is in reachable,
+    #   than an augmented path exists
+    while sink in reachable:
+        # Determine the augmented path using the backnodes variable
+        path = [sink]
+        idx = sink
+        while idx != source:
+            idx = backnode[idx]
+            path.append(idx)
+        path.reverse()
+        # Determine which nodes in path are forward and reverse arcs
+        forward_arcs = []
+        reverse_arcs = []
+        for index, i in enumerate(path):
+            if index+1 == len(path):
+                pass
+            else:
+                j = path[index+1]
+                if capacity_array[i][j] != -1:
+                    forward_arcs.append([i, j])
+                else:
+                    reverse_arcs.append([j, i])
+
+        # Step 3: Calculate residual capacity, and add to total flow
+        residual_capacity_list = []
+        for arc in forward_arcs:
+            i = arc[0]
+            j = arc[1]
+            residual_capacity_list.append(capacity_array[i][j] - flow[i][j])
+
+        for arc in reverse_arcs:
+            i = arc[1]
+            j = arc[0]
+            residual_capacity_list.append(capacity_array[i][j] - flow[i][j])
+
+        residual_capacity = min(residual_capacity_list)
+        totalFlow += residual_capacity
+
+        # Step 4: add/subtract residual_capacity from arcs
+        for arc in forward_arcs:
+            i = arc[0]
+            j = arc[1]
+            flow[i][j] += residual_capacity
+
+        for arc in reverse_arcs:
+            i = arc[1]
+            j = arc[0]
+            flow[i][j] -= residual_capacity
+
+        # recalculate the reachable nodes to determine if should terminate or not
+        reachable, backnode = mod_search(
+            source=source, flow=flow, numnodes=numnodes, capacity_array=capacity_array)
+    flow = np.asarray(flow)
+    return (totalFlow, flow)
+
+def mod_search(source, flow, numnodes, capacity_array):
+# creates a list of reachable nodes from source based on augmenting path rules
+# a reachable node is either forward or reverse ([i][j] or [j][i] and capacity greater than flow)
+    reachable = [source]
+    backnode = [-1]*numnodes
+    SEL = [source]
+    while len(SEL) > 0:
+        i = SEL[0]
+        SEL = SEL[1:]
+        for j in range(0, numnodes):
+            # selection criteria for augmenting path:
+            # foward path with available capacity
+            # reverse path with available capacity
+            if ((capacity_array[i][j] != -1 and capacity_array[i][j] > flow[i][j]) or (capacity_array[j][i] != -1 and capacity_array[j][i] < flow[j][i])) and j not in reachable:
+                reachable.append(j)
+                SEL.append(j)
+                backnode[j] = i
+    return reachable, backnode
+
+
+
+
+
+
+
+def traffic_assignment(G='', res_points='', dest_points='', G_demand='demand', G_capacity='capacity', G_weight='travel_time'):
+    """
+    This is my attempt at a traffic assignment problem, with options for user equilibirum (UE), and system optimal (SO) solutions,
+    Ideally, I would also like to add different algorithms (link-based, path-based, and bush-based) to test their operations, 
+    To scale this computationally, I am thinking of writing this all in terms of numpy arrays - which may be faster
+    #TODO: look into rewriting other code to also put in terms of numpy arrays? Not sure on this if necessary, feasible, or what
+
+    # Plan is to also include options within each type of algorithm (e.g., MSA and Frank-Wolfe for link-based algorithms)
+    # Also plan on using different types of termination criteria (e.g., AEC option, number of iterations option for testing purposes, etc. )
+
+    """
+
+
+     # Travel times must be whole numbers -  round values if not whole numbers
+    for x in G.edges:
+        G.edges[x][G_weight] = round(G.edges[x][G_weight])
+
+    # Convert graph to digraph format
+    # TODO: Need to see if this is having an impact on the output
+    G = nx.DiGraph(G)
+
+    # Set variables that will be used as constants throughout algorithm 
+    super_sink = 99999999
+    super_origin = 0
+    artificial_weight = 999999999999
+    artificial_capacity = 999999999999
+
+
+    # Theoretical capacity for each edge based on how many lanes there are
+    # TODO: FOR NOW, SET AS A CONSTANT - I believe typically 2300 vehicles/hour per lane is a standard - need to research tho
+    nx.set_edge_attributes(G, values=2300, name=G_capacity)
+    
+    # Set BPR alpha and beta constants
+    # TODO: FOR NOW, SET AS CONSTANT - MIGHT BE A FUNCTION OF THE TYPE OF ROAD
+    nx.set_edge_attributes(G, values=0.15, name='alpha')
+    nx.set_edge_attributes(G, values=4, name='beta')
+
+    # PREPROCESSING STEPS: 
+    # a.   Determine sources/sinks, 
+    # b.   set aritificial components of network, 
+    # c.   create OD Matrix
+    # d.   create list of ordered nodes
+    # e.   Convert capacity, weight, alpha, and beta arrays
+
+    # a. Determine sources and sinks
+    G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points = nearest_nodes(G=G, res_points=res_points, dest_points=dest_points, G_demand='demand')
+
+    # b_1. Add an artifical 0 node to maintain other nodes positions
+    #   Doesn't actually need attributes since not connected, but filling for continuity sake
+    G.add_node(super_origin, **{G_weight: artificial_weight, G_capacity: 0})
+
+    # b_2. Add artifical edge from each destination node to the artifical sink with zero cost and maximum capacity
+    # This is to allow minimum cost routing to whatever resource - destination of OD pair can change based on cost
+    for idx, sink in enumerate(unique_dest_nodes):
+        G.add_edge(sink, super_sink, **{G_weight:0, G_capacity:artificial_capacity})
+
+    # c. Create OD_matrix and add artifical edge from each origin to super_sink with extreme weight and capacity to capture loss of service 
+    #    2 reasons to add origin->super_sink edge: 
+    #   (1): Can build in elastic demand cost if people are priced out of accessign resource, or can set to arbitrarily high value to
+    #   (2): By having artifical route, can always send max flow w/o considering if accessible - if path goes through artifical link, than no access when cost is arbitrarily high
+    OD_matrix = np.empty([len(unique_origin_nodes),3])
+    for idx,x in enumerate(unique_origin_nodes):
+        OD_matrix[idx][0] = x                            # origin nodes
+        OD_matrix[idx][1] = G.nodes[x]['demand']*-1      # flow associated with the origin node
+        OD_matrix[idx][2] = len(G.nodes())-1             # destination node (when nodes reordered for numpy array, it has a value of length-1 (b/c of artifical origin 0 ))
+        G.add_edge(x, super_sink, **{G_weight: artificial_weight, G_capacity: artificial_capacity})
+
+    # d. Sort nodes in proper order
+    #   This should in theory then preserve saying node '2' in array is node '2' in network g, especially with adding the artifical node, 0
+    nodes_in_order = sorted(G.nodes())
+
+    # convert to capacity and weight arrays
+    capacity_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight=G_capacity, nonedge=-1)    # array of theoretical link capacities
+    weight_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight=G_weight, nonedge=-1)        # array of free flow weights (costs)
+    alpha_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='alpha', nonedge=-1) 
+    beta_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='beta', nonedge=-1)
+    # TODO: Check the timing on this -> I believe if I actually used a full array (above) instead of constant (below) the compute time would be significantly longer
+    alpha_array = 0.15
+    beta_array=4
+    #weight_array_star = np.copy(weight_array)  # copy of free flow weights, what I am going to be changin with each iteration
+    
+
+    # set variables
+    dest_id = len(G.nodes())-1   # destination node
+    numnodes=len(G.nodes())      # number of nodes 
+    sum_d = positive_demand      # sum of the demand
+
+
+    ##################################################################################################################################
+    # # Going to create an test network for building this function based on steve boyles textbox
+    # G = nx.DiGraph()
+    # G.add_nodes_from([0,1,2,3,4,5,6])
+    # G.add_edges_from([(1,3),(1,5),(5,6),(6,3),(2,5),(6,4),(2,4)])
+    # nx.set_edge_attributes(G,10,'Weight')
+    # nx.set_edge_attributes(G,15000,'Capacity')
+    # # OD Pair: 1-3: 5000, 2-4: 10000
+    # OD_matrix = np.array([[1,5000,3],
+    #                     [2,10000,4]])
+    # # BPR function = 10 + x/100
+
+
+    # nodes_in_order = sorted(G.nodes())
+    # capacity_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='Capacity', nonedge=-1)
+    # weight_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='Weight', nonedge=-1)
+
+
+
+    # # set variables for link algorithm
+    # dest_id = len(G.nodes())-1
+    # numnodes = len(G.nodes())
+    # sum_d = 15000
+
+    ################################################################################################################################
+
+    # LINK-BASED ALGORITHM
+
+    # INITIALIZE LINK BASED ALGORITHM
+    # a.    Create empty flow array - same size as the capacity_array (b/c node-node relationship)
+    # b.    Create initial feasible flow array with all-or-nothing minimum cost flow assignment (free flow travel cost)
+
+
+    # a. Create empty flow array 
+    flow_array = np.zeros_like(capacity_array)
+
+    # b. Create initial feasible flow array
+    for x in OD_matrix:
+        origin = np.int(x[0])
+        destination = np.int(x[2])
+        flow = x[1]
+        # calculate shortest path from an origin to all other locations
+        backnode, costlabel = shortestPath(origin=origin, capacity_array=capacity_array, weight_array=weight_array)
+        # determine path and cost from origin to super sink
+        path, cost = pathTo(backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
+
+        # update the flow array by iterating through the shortest paths just determined
+        i=0
+        while i < len(path)-1:
+            flow_array[path[i]][path[i+1]] += flow
+            i+=1
+
+
+    # TERMINATION CRITERIA
+    # Could do # of iterations, or AEC <= a value
+    # TODO: For now - set to number of iterations to compare to textbook as I build algorithm
+    # Keep the iter counter to track number of iterations regardless of termination criteria
+    iterations = 15
+    iter=0
+
+    # LINK BASED ALGORITHM: Within loop:
+    # 1.    Recalculate weight_array (travel cost times) using BPR function and initial flow_array
+    # 2.    Create empty kappa array to hold OD shortest path costs, and empty flow_array_star to hold new flows
+    # 3.    Calculate shortest paths with new weight_array
+    # 4.    Determine cost of each path and fill kappa array
+    # 5.    Fill flow_array_star with new flows
+    # 6.    Calculate lambda 
+    # 7.    shift flow, and repeat
+
+    # variables I am interested in keeping track off:
+    AEC_list = []
+    TSTT_list = []
+    SPTT_list = []
+
+    while iter <= iterations:
+        # 1. recalculate weight_array
+        #weight_array_iter = flow_array/100 +10         # Example network BPR
+        weight_array_iter = weight_array*(1+alpha_array*(flow_array/capacity_array)**beta_array)      # Real network BPR
+        
+        # 2. Create empty kappa array and flow_array_star
+        kappa=np.zeros([1,np.shape(OD_matrix)[0]])
+        flow_array_star = np.zeros_like(capacity_array)
+        # For shortest path travel time calculation (termination criteria)
+        SPTT=0      
+        for idx, x in enumerate(OD_matrix):
+            origin = np.int(x[0])
+            destination = np.int(x[2])
+            flow = x[1]
+            # 3. Calculate shortest paths
+            backnode, costlabel = shortestPath(origin=origin, capacity_array=capacity_array, weight_array=weight_array_iter)
+            path, cost = pathTo(backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
+            # 4. Fill shorest path cost array, kappa
+            kappa[0][idx]=cost      
+            # For shortest path travel time calculation (termination criteria)
+            SPTT += cost*flow
+            # 5. Update the flow array
+            i = 0
+            while i < len(path)-1:
+                flow_array_star[path[i]][path[i+1]] += flow
+                i += 1
+
+        # Calculate termination variables
+        TSTT = np.sum(np.multiply(flow_array, weight_array_iter))
+        AEC = (TSTT-SPTT)/sum_d
+
+        # 6. Calculate Lambda
+        method = 'Bisection'
+
+        if method == 'MSA':
+            # MSA
+            lambda_val = 1/(iter+2)
+                 
+        elif method == 'Bisection': 
+            # Frank-Wolfe: Bisection
+            # termination criteria for bisection method -> when high and low lambda_val are within a given distance of each other
+            term_criteria = 1/32
+            # initialize lambda_ lo, and hi values
+            lambda_lo = 0
+            lambda_hi = 1
+
+            # set up termination criteria:
+            while (lambda_hi - lambda_lo) >= term_criteria:
+                # find bisection of lo and hi values
+                lambda_val = (lambda_hi-lambda_lo)/2 + lambda_lo
+                # Calculate zeta  
+                #zeta = np.sum(((lambda_val*flow_array_star+(1-lambda_val)*flow_array)/100 + 10)*(flow_array_star-flow_array))   # Example network BPR
+                # TODO: Check BPR math below
+                zeta = np.sum(((((lambda_val*flow_array_star+(1-lambda_val)*flow_array)/capacity_array)**beta_array*alpha_array+1)*weight_array)*(flow_array_star-flow_array)) 
+
+                # determine shift
+                if zeta > 0:
+                    lambda_hi = lambda_val
+                
+                elif zeta < 0:
+                    lambda_lo = lambda_val
+
+                elif zeta == 0:
+                    lambda_hi = lambda_val
+                    lambda_lo = lambda_val
+          
+        elif method == 'Newtons Method':
+            # Frank-Wolfe: Newton's Method
+            # TODO: Program this
+            pass
+
+        elif method == 'CFW':
+            # Frank-wolfe: Conjugate Frank-Wolfe
+            # TODO: Program this 
+            pass
+        
+        print(AEC)
+
+        # 7. Shift flows
+        flow_array = lambda_val*flow_array_star + (1-lambda_val)*flow_array
+       
+
+
+        # Fill termination variable lists
+        AEC_list.append(AEC)
+        TSTT_list.append(TSTT)
+        SPTT_list.append(SPTT)
+
+
+
+
+        iter +=1 
+
+    # print(TSTT)
+    # print(SPTT)
+    # print(AEC)
+    
+
+
+    # SCRAPPING THIS PLAN POTENTIALLY
+    # # add artifical edge from each origin node to the artificial sink
+    # for idx,origin in enumerate(unique_origin_nodes):
+    #     # add artifical edge from each origin node to the artificial sink
+    #     # weight (travel_time) should be extremely high to only capture those without another path
+    #     # capacity should also be infinite because any number of people can bypass route
+    #     G.add_edge(origin, super_sink, **
+    #                {G_weight: artificial_weight, G_capacity: artificial_capacity})
+    #     # add artificial edge from artifical source to each origin
+    #     # set capacity equal to the flow, that way all flow will be divided appropriately amongst the posible paths
+    #     # set weight equal to 0, because no travel time
+    #     cap = G.nodes[origin][G_demand]*-1
+    #     G.add_edge(super_origin, origin, **{G_weight:0, G_capacity: cap})
+
+
+    # need to create feasible flow, could use max flow, but I don't think my code is the best for this
+    #totalFlow, flow = maxFlow(source=0, sink=len(G.nodes())-1, numnodes=len(G.nodes()), capacity_array=capacity_array, weight_array=weight_array)
+
+
+
+
+    test='output'
+    return test
