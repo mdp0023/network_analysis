@@ -1533,11 +1533,11 @@ def traffic_assignment(G='',
     ################################################################################################################################
 
     # LINK-BASED ALGORITHM
+    if algorithm == "link_based":
 
     # INITIALIZE LINK BASED ALGORITHM
     # a.    Create empty flow array - same size as the capacity_array (b/c node-node relationship)
     # b.    Create initial feasible flow array with all-or-nothing minimum cost flow assignment (free flow travel cost)
-
 
     # a. Create empty flow array 
     flow_array = np.zeros_like(capacity_array)
@@ -1560,10 +1560,10 @@ def traffic_assignment(G='',
 
 
     # TERMINATION CRITERIA
-    # Could do # of iterations, or AEC <= a value
+        # Could do # of iterations, or AEC <= a value, or RG <= value
     # TODO: For now - set to number of iterations to compare to textbook as I build algorithm
     # Keep the iter counter to track number of iterations regardless of termination criteria
-    iterations = 15
+        iterations = 3
     iter=0
 
     # LINK BASED ALGORITHM: Within loop:
@@ -1579,11 +1579,15 @@ def traffic_assignment(G='',
     AEC_list = []
     TSTT_list = []
     SPTT_list = []
+        RG_list = []
+
+        # CFW marker -> CFW algorithm has different 1st iteration, use this marker to get around 
+        CFW_marker = 0
 
     while iter <= iterations:
         # 1. recalculate weight_array
-        #weight_array_iter = flow_array/100 +10         # Example network BPR
-        weight_array_iter = weight_array*(1+alpha_array*(flow_array/capacity_array)**beta_array)      # Real network BPR
+            weight_array_iter = flow_array/100 +10         # Example network BPR
+            #weight_array_iter = weight_array*(1+alpha_array*(flow_array/capacity_array)**beta_array)      # Real network BPR
         
         # 2. Create empty kappa array and flow_array_star
         kappa=np.zeros([1,np.shape(OD_matrix)[0]])
@@ -1610,9 +1614,9 @@ def traffic_assignment(G='',
         # Calculate termination variables
         TSTT = np.sum(np.multiply(flow_array, weight_array_iter))
         AEC = (TSTT-SPTT)/sum_d
+            RG = TSTT/SPTT - 1
 
-        # 6. Calculate Lambda
-        method = 'Bisection'
+            # 6. Calculate Lambda using the method given 
 
         if method == 'MSA':
             # MSA
@@ -1630,10 +1634,11 @@ def traffic_assignment(G='',
             while (lambda_hi - lambda_lo) >= term_criteria:
                 # find bisection of lo and hi values
                 lambda_val = (lambda_hi-lambda_lo)/2 + lambda_lo
-                # Calculate zeta  
-                #zeta = np.sum(((lambda_val*flow_array_star+(1-lambda_val)*flow_array)/100 + 10)*(flow_array_star-flow_array))   # Example network BPR
+                    # Calculate x_hat, and subsequently zeta
+                    x_hat = lambda_val*flow_array_star+(1-lambda_val)*flow_array
+                    zeta = np.sum((x_hat/100 + 10)*(flow_array_star-flow_array))   # Example network BPR
                 # TODO: Check BPR math below
-                zeta = np.sum(((((lambda_val*flow_array_star+(1-lambda_val)*flow_array)/capacity_array)**beta_array*alpha_array+1)*weight_array)*(flow_array_star-flow_array)) 
+                    # zeta = np.sum(((((lambda_val*flow_array_star+(1-lambda_val)*flow_array)/capacity_array)**beta_array*alpha_array+1)*weight_array)*(flow_array_star-flow_array)) 
 
                 # determine shift
                 if zeta > 0:
@@ -1648,20 +1653,71 @@ def traffic_assignment(G='',
           
         elif method == 'Newtons Method':
             # Frank-Wolfe: Newton's Method
-            # TODO: Program this
-            pass
+                # initialize lambda - just going to choose 0.5
+                lambda_val = 0.5
+                # calculate x_hat
+                x_hat = lambda_val*flow_array_star + (1-lambda_val)*flow_array
+                # calculate f and f_prime
+                f = np.sum((x_hat/100 + 10)*(flow_array_star-flow_array))  #  example network BPR
+                f_prime = np.sum((1/100)*(flow_array_star-flow_array)**2)      # example network BPR
+                # TODO: Program more complex BPR function
+                # Update Lambda
+                lambda_val -= f/f_prime
+                if lambda_val > 1:
+                    lambda_val = 1
+                elif lambda_val <0:
+                    lambda_val = 0
+                #TODO: see PPT, add criteria about hitting the same endpoint twice in a row to terminate
 
         elif method == 'CFW':
             # Frank-wolfe: Conjugate Frank-Wolfe
-            # TODO: Program this 
-            pass
+                # REFER TO PAGE 177 in BOYLES TEXTBOOT
+                # first iteration: use Newton's method only
+                # subsequent interations, determine new x*star based on alpha calcuation 
+                # TODO: add functionality for real BPR function
+                epsilon=0.01
+                if CFW_marker > 0:
+                    # solve for alpha, eq (6.3) in boyles textbook, page 176
+                    item1 = flow_array_star_old - flow_array
+                    item2 = flow_array_star - flow_array
+                    item3 = flow_array_star - flow_array_star_old
+                    num = np.sum((1/100)*item1*item2)
+                    den = np.sum((1/100)*item1*item3)
+                    if den == 0:
+                        alpha=0
+                    else:
+                        alpha = num/den
+                        if alpha >= 1:
+                            alpha = 1 - epsilon
+                        if alpha < 0:
+                            alpha = 0
+                    flow_array_star = alpha*flow_array_star_old+(1-alpha)*flow_array_star
+
+                # Calculate Lambda using new flow_array_star estimation utilizing Newton's Method
+                # initialize lambda - just going to choose 0.5
+                lambda_val = 0.5
+                # calculate x_hat
+                x_hat = lambda_val*flow_array_star + (1-lambda_val)*flow_array
+                # calculate f and f_prime
+                # example network BPR
+                f = np.sum((x_hat/100 + 10)*(flow_array_star-flow_array))
+                # example network BPR
+                f_prime = np.sum((1/100)*(flow_array_star-flow_array)**2)
+                # TODO: Program more complex BPR function
+                # Update Lambda
+                lambda_val -= f/f_prime
+                if lambda_val > 1:
+                    lambda_val = 1
+                elif lambda_val < 0:
+                    lambda_val = 0
         
-        print(AEC)
+                # flow_array_star_old value for the next iteration
+                flow_array_star_old = np.copy(flow_array_star)
+                # set marker to pass for subsequent interations
+                CFW_marker = 1
 
         # 7. Shift flows
         flow_array = lambda_val*flow_array_star + (1-lambda_val)*flow_array
-       
-
 
         # Fill termination variable lists
         AEC_list.append(AEC)
