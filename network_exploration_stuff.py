@@ -1535,124 +1535,124 @@ def traffic_assignment(G='',
     # LINK-BASED ALGORITHM
     if algorithm == "link_based":
 
-    # INITIALIZE LINK BASED ALGORITHM
-    # a.    Create empty flow array - same size as the capacity_array (b/c node-node relationship)
-    # b.    Create initial feasible flow array with all-or-nothing minimum cost flow assignment (free flow travel cost)
+        # INITIALIZE LINK BASED ALGORITHM
+        # a.    Create empty flow array - same size as the capacity_array (b/c node-node relationship)
+        # b.    Create initial feasible flow array with all-or-nothing minimum cost flow assignment (free flow travel cost)
 
-    # a. Create empty flow array 
-    flow_array = np.zeros_like(capacity_array)
+        # a. Create empty flow array 
+        flow_array = np.zeros_like(capacity_array)
 
-    # b. Create initial feasible flow array
-    for x in OD_matrix:
-        origin = np.int(x[0])
-        destination = np.int(x[2])
-        flow = x[1]
-        # calculate shortest path from an origin to all other locations
-        backnode, costlabel = shortestPath(origin=origin, capacity_array=capacity_array, weight_array=weight_array)
-        # determine path and cost from origin to super sink
-        path, cost = pathTo(backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
+        # b. Create initial feasible flow array
+        for x in OD_matrix:
+            origin = np.int(x[0])
+            destination = np.int(x[2])
+            flow = x[1]
+            # calculate shortest path from an origin to all other locations
+            backnode, costlabel = shortestPath(origin=origin, capacity_array=capacity_array, weight_array=weight_array)
+            # determine path and cost from origin to super sink
+            path, cost = pathTo(backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
 
-        # update the flow array by iterating through the shortest paths just determined
-        i=0
-        while i < len(path)-1:
-            flow_array[path[i]][path[i+1]] += flow
-            i+=1
+            # update the flow array by iterating through the shortest paths just determined
+            i=0
+            while i < len(path)-1:
+                flow_array[path[i]][path[i+1]] += flow
+                i+=1
 
 
-    # TERMINATION CRITERIA
+        # TERMINATION CRITERIA
         # Could do # of iterations, or AEC <= a value, or RG <= value
-    # TODO: For now - set to number of iterations to compare to textbook as I build algorithm
-    # Keep the iter counter to track number of iterations regardless of termination criteria
+        # TODO: For now - set to number of iterations to compare to textbook as I build algorithm
+        # Keep the iter counter to track number of iterations regardless of termination criteria
         iterations = 3
-    iter=0
+        iter=0
 
-    # LINK BASED ALGORITHM: Within loop:
-    # 1.    Recalculate weight_array (travel cost times) using BPR function and initial flow_array
-    # 2.    Create empty kappa array to hold OD shortest path costs, and empty flow_array_star to hold new flows
-    # 3.    Calculate shortest paths with new weight_array
-    # 4.    Determine cost of each path and fill kappa array
-    # 5.    Fill flow_array_star with new flows
-    # 6.    Calculate lambda 
-    # 7.    shift flow, and repeat
+        # LINK BASED ALGORITHM: Within loop:
+        # 1.    Recalculate weight_array (travel cost times) using BPR function and initial flow_array
+        # 2.    Create empty kappa array to hold OD shortest path costs, and empty flow_array_star to hold new flows
+        # 3.    Calculate shortest paths with new weight_array
+        # 4.    Determine cost of each path and fill kappa array
+        # 5.    Fill flow_array_star with new flows
+        # 6.    Calculate lambda 
+        # 7.    shift flow, and repeat
 
-    # variables I am interested in keeping track off:
-    AEC_list = []
-    TSTT_list = []
-    SPTT_list = []
+        # variables I am interested in keeping track off:
+        AEC_list = []
+        TSTT_list = []
+        SPTT_list = []
         RG_list = []
 
         # CFW marker -> CFW algorithm has different 1st iteration, use this marker to get around 
         CFW_marker = 0
 
-    while iter <= iterations:
-        # 1. recalculate weight_array
+        while iter <= iterations:
+            # 1. recalculate weight_array
             weight_array_iter = flow_array/100 +10         # Example network BPR
             #weight_array_iter = weight_array*(1+alpha_array*(flow_array/capacity_array)**beta_array)      # Real network BPR
-        
-        # 2. Create empty kappa array and flow_array_star
-        kappa=np.zeros([1,np.shape(OD_matrix)[0]])
-        flow_array_star = np.zeros_like(capacity_array)
-        # For shortest path travel time calculation (termination criteria)
-        SPTT=0      
-        for idx, x in enumerate(OD_matrix):
-            origin = np.int(x[0])
-            destination = np.int(x[2])
-            flow = x[1]
-            # 3. Calculate shortest paths
-            backnode, costlabel = shortestPath(origin=origin, capacity_array=capacity_array, weight_array=weight_array_iter)
-            path, cost = pathTo(backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
-            # 4. Fill shorest path cost array, kappa
-            kappa[0][idx]=cost      
+            
+            # 2. Create empty kappa array and flow_array_star
+            kappa=np.zeros([1,np.shape(OD_matrix)[0]])
+            flow_array_star = np.zeros_like(capacity_array)
             # For shortest path travel time calculation (termination criteria)
-            SPTT += cost*flow
-            # 5. Update the flow array
-            i = 0
-            while i < len(path)-1:
-                flow_array_star[path[i]][path[i+1]] += flow
-                i += 1
+            SPTT=0      
+            for idx, x in enumerate(OD_matrix):
+                origin = np.int(x[0])
+                destination = np.int(x[2])
+                flow = x[1]
+                # 3. Calculate shortest paths
+                backnode, costlabel = shortestPath(origin=origin, capacity_array=capacity_array, weight_array=weight_array_iter)
+                path, cost = pathTo(backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
+                # 4. Fill shorest path cost array, kappa
+                kappa[0][idx]=cost      
+                # For shortest path travel time calculation (termination criteria)
+                SPTT += cost*flow
+                # 5. Update the flow array
+                i = 0
+                while i < len(path)-1:
+                    flow_array_star[path[i]][path[i+1]] += flow
+                    i += 1
 
-        # Calculate termination variables
-        TSTT = np.sum(np.multiply(flow_array, weight_array_iter))
-        AEC = (TSTT-SPTT)/sum_d
+            # Calculate termination variables
+            TSTT = np.sum(np.multiply(flow_array, weight_array_iter))
+            AEC = (TSTT-SPTT)/sum_d
             RG = TSTT/SPTT - 1
 
             # 6. Calculate Lambda using the method given 
 
-        if method == 'MSA':
-            # MSA
-            lambda_val = 1/(iter+2)
-                 
-        elif method == 'Bisection': 
-            # Frank-Wolfe: Bisection
-            # termination criteria for bisection method -> when high and low lambda_val are within a given distance of each other
-            term_criteria = 1/32
-            # initialize lambda_ lo, and hi values
-            lambda_lo = 0
-            lambda_hi = 1
+            if method == 'MSA':
+                # MSA
+                lambda_val = 1/(iter+2)
+                    
+            elif method == 'Bisection': 
+                # Frank-Wolfe: Bisection
+                # termination criteria for bisection method -> when high and low lambda_val are within a given distance of each other
+                term_criteria = 1/32
+                # initialize lambda_ lo, and hi values
+                lambda_lo = 0
+                lambda_hi = 1
 
-            # set up termination criteria:
-            while (lambda_hi - lambda_lo) >= term_criteria:
-                # find bisection of lo and hi values
-                lambda_val = (lambda_hi-lambda_lo)/2 + lambda_lo
+                # set up termination criteria:
+                while (lambda_hi - lambda_lo) >= term_criteria:
+                    # find bisection of lo and hi values
+                    lambda_val = (lambda_hi-lambda_lo)/2 + lambda_lo
                     # Calculate x_hat, and subsequently zeta
                     x_hat = lambda_val*flow_array_star+(1-lambda_val)*flow_array
                     zeta = np.sum((x_hat/100 + 10)*(flow_array_star-flow_array))   # Example network BPR
-                # TODO: Check BPR math below
+                    # TODO: Check BPR math below
                     # zeta = np.sum(((((lambda_val*flow_array_star+(1-lambda_val)*flow_array)/capacity_array)**beta_array*alpha_array+1)*weight_array)*(flow_array_star-flow_array)) 
 
-                # determine shift
-                if zeta > 0:
-                    lambda_hi = lambda_val
-                
-                elif zeta < 0:
-                    lambda_lo = lambda_val
+                    # determine shift
+                    if zeta > 0:
+                        lambda_hi = lambda_val
+                    
+                    elif zeta < 0:
+                        lambda_lo = lambda_val
 
-                elif zeta == 0:
-                    lambda_hi = lambda_val
-                    lambda_lo = lambda_val
-          
-        elif method == 'Newtons Method':
-            # Frank-Wolfe: Newton's Method
+                    elif zeta == 0:
+                        lambda_hi = lambda_val
+                        lambda_lo = lambda_val
+            
+            elif method == 'Newtons Method':
+                # Frank-Wolfe: Newton's Method
                 # initialize lambda - just going to choose 0.5
                 lambda_val = 0.5
                 # calculate x_hat
@@ -1669,8 +1669,8 @@ def traffic_assignment(G='',
                     lambda_val = 0
                 #TODO: see PPT, add criteria about hitting the same endpoint twice in a row to terminate
 
-        elif method == 'CFW':
-            # Frank-wolfe: Conjugate Frank-Wolfe
+            elif method == 'CFW':
+                # Frank-wolfe: Conjugate Frank-Wolfe
                 # REFER TO PAGE 177 in BOYLES TEXTBOOT
                 # first iteration: use Newton's method only
                 # subsequent interations, determine new x*star based on alpha calcuation 
@@ -1710,48 +1710,222 @@ def traffic_assignment(G='',
                     lambda_val = 1
                 elif lambda_val < 0:
                     lambda_val = 0
-        
+
                 # flow_array_star_old value for the next iteration
                 flow_array_star_old = np.copy(flow_array_star)
                 # set marker to pass for subsequent interations
                 CFW_marker = 1
 
-        # 7. Shift flows
-        flow_array = lambda_val*flow_array_star + (1-lambda_val)*flow_array
+            # 7. Shift flows
+            flow_array = lambda_val*flow_array_star + (1-lambda_val)*flow_array
 
-        # Fill termination variable lists
-        AEC_list.append(AEC)
-        TSTT_list.append(TSTT)
-        SPTT_list.append(SPTT)
+            # Fill termination variable lists
+            AEC_list.append(AEC)
+            TSTT_list.append(TSTT)
+            SPTT_list.append(SPTT)
+            RG_list.append(RG)
 
+            iter +=1 
 
-
-
-        iter +=1 
-
-    # print(TSTT)
-    # print(SPTT)
-    # print(AEC)
     
+    elif algorithm == 'path_based':
+        # Specifically using Newton's Method of Gradient Projection (not to be confused with Projected Gradient)
+
+        # Termination criteria variables I am interested in keeping track off:
+        AEC_list = []
+        TSTT_list = []
+        SPTT_list = []
+        RG_list = []
+
+        # Initialize the flow and weight arrays
+        flow_array = np.zeros_like(capacity_array)
+        weight_array_iter = flow_array/100 + 10         # Example BPR TODO: Update to real 
+
+        # Initialize nested list to store OD path information 
+        # TODO: IDK if this should be a nested list, nested dictionary, or pandas dataframe
+            # for now, using a nested list because it's the easiest to create
+        paths_array = []
+        for OD_pair in OD_matrix:
+            # paths_array[x][0]: [O, D]
+            # paths_array[x][1]: [list of arrays that are paths for OD-pair]
+            # paths_array[x][2]: [list of flows (associated with paths)]
+            # paths_array[x][3]: [cost per unit flow (associated with paths)]
+
+            origin = OD_pair[0]
+            flow = OD_pair[1]
+            destination = OD_pair[2]
+            # Calculate shortest path for OD pair
+            backnode, costlabel = shortestPath(origin=origin, capacity_array=capacity_array, weight_array=weight_array_iter)
+            path, cost = pathTo(backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
+
+            # update the flow array in order to update the weight array
+            i = 0
+            while i < len(path)-1:
+                flow_array[path[i]][path[i+1]] += flow
+                i += 1
+            # Example BPR TODO: Update to real
+            weight_array_iter = flow_array/100 + 10             
+
+            # calculate new cost of shortest path
+            cost=0
+            i = 0
+            while i < len(path)-1:
+                cost += weight_array_iter[path[i]][path[i+1]]
+                i += 1
+
+            # append the paths_array
+            paths_array.append([[origin,destination],[list(path)],[flow],[float(cost)]])
+
+        # calculate initial termination criteria variables
+        SPTT = 0
+        for idx, x in enumerate(OD_matrix):
+            origin = np.int(x[0])
+            destination = np.int(x[2])
+            flow = x[1]
+            # Calculate shortest paths
+            backnode, costlabel = shortestPath(
+                origin=origin, capacity_array=capacity_array, weight_array=weight_array_iter)
+            path, cost = pathTo(
+                backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
+            # For shortest path travel time calculation (termination criteria)
+            SPTT += cost*flow
+
+        # termination criteria
+        TSTT = np.sum(np.multiply(flow_array, weight_array_iter))
+        AEC = (TSTT-SPTT)/sum_d
+        RG = TSTT/SPTT - 1
+
+        # begin iterations
+        iterations = 2
+        iter=0
+
+        while iter <= iterations:
+
+            for OD_pair in paths_array:
+                origin = OD_pair[0][0]
+                destination = OD_pair[0][1]
+                paths = OD_pair[1]
+                flows = OD_pair[2]
+                costs = OD_pair[3]
+                # Find the new shortest path 
+                backnode, costlabel = shortestPath( origin=origin, capacity_array=capacity_array, weight_array=weight_array_iter)
+                path_hat, cost_hat = pathTo(backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
+
+                path_hat = list(path_hat)
+
+                # if path already in, don't append, just move it, and associated information to the end
+                # TODO : Need to fix this to address if path_hat is only path in paths -  I think for now it should still work fine?
+                    # can add an if else statement: if len paths == 1 [do this] else enter for loop
+                
+                if path_hat in paths:
+                    index = paths.index(path_hat)
+                    paths.append(paths.pop(index))
+                    flows.append(flows.pop(index))
+                    costs.append(costs.pop(index))
+             
+                # if not, append the new path and perform path functions
+                else:
+                    paths.append(path_hat)
+                    # set to 0 to act as place holder for upcoming calculations
+                    flows.append(0)
+                    costs.append(0)
+
+                # perform functions on each path except the shortest path (in the last index of list)
+                for idx, path in enumerate(paths[:-1]):
+
+                    all_links=[]
+                    # extract links from path_hat (new shortest path)
+                    i = 0
+                    while i < len(path_hat)-1:
+                        all_links.append([path_hat[i],path_hat[i+1]])
+                        i += 1
+                    # extract links from current path iteration
+                    i = 0
+                    while i < len(path)-1:
+                        all_links.append([path[i],path[i+1]])
+                        i += 1
+                    # determine the unique node-node pairs (i.e., the unique links across all paths)
+                    unique_links = [list(x) for x in set(tuple(x) for x in all_links)]
+
+                    # determine cost difference (numerator of delta_h equation)
+                    num = costs[idx]-cost_hat
+
+                    # determine the sum of derivatives (denominator of delta_h equation)
+                    den = 0
+                    for link in unique_links:
+                        # TODO: update to derivative of real BPR function - currently set as sample network equation
+                        den += 1/100
+                    
+                    # calculate delta_h
+                    delta_h = num/den
+
+                    # adjusted path flow value
+                    adj = min(flows[idx], delta_h)
+
+                    # update paths_array flow values
+                    flows[idx] -= adj
+                    flows[-1] += adj
+
+                    # TODO: add if statement if flow is reduced to 0, need to remove pathway b/c no longer an active path
+                    # Need to make sure this function properly if it occurs
+                    # if flow reduced to 0 remove from list of active paths
+                    if flows[idx] == 0:
+                        paths.pop(idx)
+                        flows.pop(idx)
+                        costs.pop(idx)
+
+                    # for the path under examination and path_hat, need to update flow array to calc new weight array
+                    i = 0
+                    while i < len(path)-1:
+                        flow_array[path[i]][path[i+1]] -= adj
+                        i += 1
+                    i = 0
+                    while i < len(path_hat)-1:
+                        flow_array[path_hat[i]][path_hat[i+1]] += adj
+                        i += 1
+                    # Example BPR TODO: Update to real
+                    weight_array_iter = flow_array/100 + 10             
+
+                    # WITH NEW WEIGHT ARRAY, NEW COSTS NEED TO BE CALCULATED AND ASSOCIATED WITH EACH PATH UNDER EXAMINATION
+                    # THIS SHOULD FIX THE EXTRA LOOP ERROR
+                    for OD_pair in paths_array:
+                        paths = OD_pair[1]
+                        costs = OD_pair[3]
+                        for idx, path in enumerate(paths):
+                            cost= 0
+                            i = 0
+                            while i < len(path)-1:
+                                cost += weight_array_iter[path[i]][path[i+1]]
+                                i += 1
+                                costs[idx] = cost
+
+            # calculate  termination criteria variables
+            SPTT = 0
+            for idx, x in enumerate(OD_matrix):
+                origin = np.int(x[0])
+                destination = np.int(x[2])
+                flow = x[1]
+                # Calculate shortest paths
+                backnode, costlabel = shortestPath(
+                    origin=origin, capacity_array=capacity_array, weight_array=weight_array_iter)
+                path, cost = pathTo(
+                    backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
+                # For shortest path travel time calculation (termination criteria)
+                SPTT += cost*flow
+
+            TSTT = np.sum(np.multiply(flow_array, weight_array_iter))
+            AEC = (TSTT-SPTT)/sum_d
+            RG = TSTT/SPTT - 1
+            print(RG)
+                        
+            iter+=1
+
+        print(paths_array)
+        pass
 
 
-    # SCRAPPING THIS PLAN POTENTIALLY
-    # # add artifical edge from each origin node to the artificial sink
-    # for idx,origin in enumerate(unique_origin_nodes):
-    #     # add artifical edge from each origin node to the artificial sink
-    #     # weight (travel_time) should be extremely high to only capture those without another path
-    #     # capacity should also be infinite because any number of people can bypass route
-    #     G.add_edge(origin, super_sink, **
-    #                {G_weight: artificial_weight, G_capacity: artificial_capacity})
-    #     # add artificial edge from artifical source to each origin
-    #     # set capacity equal to the flow, that way all flow will be divided appropriately amongst the posible paths
-    #     # set weight equal to 0, because no travel time
-    #     cap = G.nodes[origin][G_demand]*-1
-    #     G.add_edge(super_origin, origin, **{G_weight:0, G_capacity: cap})
 
-
-    # need to create feasible flow, could use max flow, but I don't think my code is the best for this
-    #totalFlow, flow = maxFlow(source=0, sink=len(G.nodes())-1, numnodes=len(G.nodes()), capacity_array=capacity_array, weight_array=weight_array)
+    
 
 
 
