@@ -1454,6 +1454,7 @@ def traffic_assignment(G='',
     
     # Set BPR alpha and beta constants
     # TODO: FOR NOW, SET AS CONSTANT - MIGHT BE A FUNCTION OF THE TYPE OF ROAD
+        # HOWEVER: as an array/matrix, increases the computational time greatly
     nx.set_edge_attributes(G, values=0.15, name='alpha')
     nx.set_edge_attributes(G, values=4, name='beta')
 
