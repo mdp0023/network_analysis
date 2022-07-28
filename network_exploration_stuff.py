@@ -1401,11 +1401,28 @@ def traffic_assignment(G='', res_points='', dest_points='', G_demand='demand', G
     This is my attempt at a traffic assignment problem, with options for user equilibirum (UE), and system optimal (SO) solutions,
     Ideally, I would also like to add different algorithms (link-based, path-based, and bush-based) to test their operations, 
     To scale this computationally, I am thinking of writing this all in terms of numpy arrays - which may be faster
-    #TODO: look into rewriting other code to also put in terms of numpy arrays? Not sure on this if necessary, feasible, or what
+    TODO: look into rewriting other code to also put in terms of numpy arrays? Not sure on this if necessary, feasible, or what
 
-    # Plan is to also include options within each type of algorithm (e.g., MSA and Frank-Wolfe for link-based algorithms)
-    # Also plan on using different types of termination criteria (e.g., AEC option, number of iterations option for testing purposes, etc. )
+    Plan is to also include options within each type of algorithm (e.g., MSA and Frank-Wolfe for link-based algorithms)
+    Also plan on using different types of termination criteria (e.g., AEC option, number of iterations option for testing purposes, etc. )
 
+    Algorithm argument: Whether to use link, path, or bush based algorithm
+    method argument: if the algorithm is multiple options (e.g., MSA versus CFW for link based algorithms)
+
+    These are the algorithms that will can be utilized:
+        - Link Based
+            - Method of Successive Averages (MSA)
+            - Bisection
+            - Newton's Method
+            - Conjugate Frank-Wolfe
+        
+        - Path Based
+            - Gradient Projection
+        
+        -Bush Based 
+             - Algorithm B 
+             - (Maybe) Origin-based assignment
+             - (Maybe) Linear user cost equilibrium
     """
 
 
