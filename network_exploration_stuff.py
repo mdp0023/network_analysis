@@ -1396,7 +1396,14 @@ def mod_search(source, flow, numnodes, capacity_array):
 
 
 
-def traffic_assignment(G='', res_points='', dest_points='', G_demand='demand', G_capacity='capacity', G_weight='travel_time'):
+def traffic_assignment(G='',
+                        res_points='', 
+                        dest_points='', 
+                        G_demand='demand', 
+                        G_capacity='capacity', 
+                        G_weight='travel_time', 
+                        algorithm='link_based', 
+                        method='CFW'):
     """
     This is my attempt at a traffic assignment problem, with options for user equilibirum (UE), and system optimal (SO) solutions,
     Ideally, I would also like to add different algorithms (link-based, path-based, and bush-based) to test their operations, 
