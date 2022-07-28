@@ -1510,28 +1510,25 @@ def traffic_assignment(G='',
 
 
     ##################################################################################################################################
-    # # Going to create an test network for building this function based on steve boyles textbox
-    # G = nx.DiGraph()
-    # G.add_nodes_from([0,1,2,3,4,5,6])
-    # G.add_edges_from([(1,3),(1,5),(5,6),(6,3),(2,5),(6,4),(2,4)])
-    # nx.set_edge_attributes(G,10,'Weight')
-    # nx.set_edge_attributes(G,15000,'Capacity')
-    # # OD Pair: 1-3: 5000, 2-4: 10000
-    # OD_matrix = np.array([[1,5000,3],
-    #                     [2,10000,4]])
-    # # BPR function = 10 + x/100
+    # Going to create an test network for building this function based on steve boyles textbox
+    G = nx.DiGraph()
+    G.add_nodes_from([0,1,2,3,4,5,6])
+    G.add_edges_from([(1,3),(1,5),(5,6),(6,3),(2,5),(6,4),(2,4)])
+    nx.set_edge_attributes(G,10,'Weight')
+    nx.set_edge_attributes(G,15000,'Capacity')
+    # OD Pair: 1-3: 5000, 2-4: 10000
+    OD_matrix = np.array([[1,5000,3],
+                        [2,10000,4]])
+    # BPR function = 10 + x/100
 
+    nodes_in_order = sorted(G.nodes())
+    capacity_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='Capacity', nonedge=-1)
+    weight_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='Weight', nonedge=-1)
 
-    # nodes_in_order = sorted(G.nodes())
-    # capacity_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='Capacity', nonedge=-1)
-    # weight_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='Weight', nonedge=-1)
-
-
-
-    # # set variables for link algorithm
-    # dest_id = len(G.nodes())-1
-    # numnodes = len(G.nodes())
-    # sum_d = 15000
+    # set variables for link algorithm
+    dest_id = len(G.nodes())-1
+    numnodes = len(G.nodes())
+    sum_d = 15000
 
     ################################################################################################################################
 
