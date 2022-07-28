@@ -107,7 +107,14 @@ G_out, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, re
 # print(list(list(G_out.nodes(data=True))[0][-1].keys()))
 
 
-output = mynet.traffic_assignment(G=G, res_points=res_points, dest_points=food_points, G_demand='demand')
+output = mynet.traffic_assignment(G=G, 
+                                  res_points=res_points, 
+                                  dest_points=food_points, 
+                                  G_demand='demand',
+                                  G_capacity='capacity',
+                                  G_weight='travel_time',
+                                  algorithm='path_based',
+                                  method='CFW')
 print(output)
 
 # print node values for a specific attribute
