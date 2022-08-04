@@ -113,7 +113,7 @@ output = mynet.traffic_assignment(G=G,
                                   G_demand='demand',
                                   G_capacity='capacity',
                                   G_weight='travel_time',
-                                  algorithm='path_based',
+                                  algorithm='bush_based',
                                   method='CFW')
 print(output)
 
