@@ -1429,7 +1429,7 @@ def traffic_assignment(G='',
     """
 
 
-     # Travel times must be whole numbers -  round values if not whole numbers
+    # Travel times must be whole numbers -  round values if not whole numbers
     for x in G.edges:
         G.edges[x][G_weight] = round(G.edges[x][G_weight])
 
@@ -1507,6 +1507,9 @@ def traffic_assignment(G='',
 
 
     ##################################################################################################################################
+    # EXAMPLE ARRAYS THAT WERE USED FOR TESTING PURPOSES
+
+
     # Going to create an test network for building this function based on steve boyles textbox
     # G = nx.DiGraph()
     # G.add_nodes_from([0,1,2,3,4,5,6])
@@ -2096,310 +2099,310 @@ def traffic_assignment(G='',
 
 
 
-    # sum flow on bushes for initial network flow
-    flow_array = np.zeros_like(weight_array)
-    for bush in bush_flows:
-        flow_array += bush
-    
-    # calculate initial network travel times
-    # TODO Change to fit BPR function THIS IS A MUST
-    division_array = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                                    [0, 0, 200, 0, 200, 0, 0, 0, 0, 0],
-                                    [0, 0, 0, 200, 0, 100, 0, 0, 0, 0],
-                                    [0, 0, 0, 0, 0, 0, 200, 0, 0, 0],
-                                    [0, 0, 0, 0, 0, 100, 0, 200, 0, 0],
-                                    [0, 0, 0, 0, 0, 0, 100, 0, 100, 0],
-                                    [0, 0, 0, 0, 0, 0, 0, 0, 0, 200],
-                                    [0, 0, 0, 0, 0, 0, 0, 0, 200, 0],
-                                    [0, 0, 0, 0, 0, 0, 0, 0, 0, 100],
-                                    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
-    addition_array = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                               [0, 0, 3, 0, 3, 0, 0, 0, 0, 0],
-                               [0, 0, 0, 3, 0, 5, 0, 0, 0, 0],
-                               [0, 0, 0, 0, 0, 0, 3, 0, 0, 0],
-                               [0, 0, 0, 0, 0, 5, 0, 3, 0, 0],
-                               [0, 0, 0, 0, 0, 0, 5, 0, 5, 0],
-                               [0, 0, 0, 0, 0, 0, 0, 0, 0, 3],
-                               [0, 0, 0, 0, 0, 0, 0, 0, 3, 0],
-                               [0, 0, 0, 0, 0, 0, 0, 0, 0, 5],
-                               [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
-  
-    # TODO change to BPR function
-    weight_array_itter = (flow_array/division_array)**2+addition_array
-    weight_array_itter = np.nan_to_num(weight_array_itter)
-   
-
-    # Begin the loops of, for each bush,:
-        # 1. find if shortcuts exist (i.e., find new shortest path from O-D, if it uses links not on bush, add them)
-            # 1a. find shortest path
-            # 1b. add shortcuts to bush
-        # 2. Calculate L and U labels in forward topological order
-        # 3. conduct divergence node determination loop to shift flows using Newton's method
-        # 4. After all Newton's adjustments for this bush, calculate new network flow and adjust travel times
-        # repeat for each bush
-
-    # ITER ETC. ETC. GOES HERE
-    iter=0
-    while iter <= 10:
-
-        for idx, bush in enumerate(bushes):
-            # set variables
-            origin = OD_matrix[idx][0]
-            flow = OD_matrix[idx][1]
-            destination = OD_matrix[idx][2]
-            #topo_order = topo_orders[idx]
-            bush_flow = bush_flows[idx]
-
-            # 1. FIND SHORTCUTS AND ADD TO BUSH
-            # find shortest path from origin to destination
-            backnode, costlabel = shortestPath(origin, capacity_array, weight_array_itter)
-            path, cost = pathTo(backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
-            # append short cuts on bush if they exist
-            id = 0
-            while id < len(path)-1:
-                i=path[id]
-                j=path[id+1]
-                if bush[i][j] == -1:
-                    bush[i][j] = 1
-                id += 1
-
-            # 2. CALCULATE L AND U LABELS IN FORWARD TOPOLOGICAL ORDER
-            # conduct topological ordering from the origin node
-            topo_order = topo_order_function(bush, origin=origin, weight_array=weight_array_itter, num_nodes=num_nodes, node_list=node_list)
-            # Set L and U variables
-            L_link = np.full_like(weight_array, np.inf)
-            L_node = np.full(len(topo_order), np.inf)
-            U_link = np.full_like(weight_array, -np.inf)
-            U_node = np.full(len(topo_order), -np.inf)
-            # L and U at r (origin) are equal to 0
-            L_node[0] = 0
-            U_node[0] = 0
-
-            # determine labels in forward topological ordering
-            id=0
-            while id <= len(topo_order)-1:
-                
-                # for first in topological order
-                i = topo_order[id]
-                if id==0:
-                    # TODO: I think this can be optimized to only search for values in topo_order in position higher than what we are currently are at - the whole benefit of using topo order also check on this feature below in this same loop - CAN MAKE IT BETTER
-                    for j in topo_order:
-                        if bush[i][j] == 1:
-                            L_link[i][j] = weight_array_itter[i][j]
-                            U_link[i][j] = weight_array_itter[i][j]
-                
-                # for last in topological order
-                elif id == len(topo_order)-1:
-                    l_val = L_node[id]
-                    u_val = U_node[id]
-                    for h in topo_order:
-                        if bush[h][i] == 1:
-                            l_val = min(l_val, L_link[h][i])
-                            u_val = max(l_val, U_link[h][i])
-                    L_node[id] = l_val
-                    U_node[id] = u_val
-                
-                # for all others
-                else:
-                    j=topo_order[id+1]
-                    l_val = L_node[id]
-                    u_val = U_node[id]
-                    for h in topo_order:
-                        if bush[h][i] == 1:
-                            l_val = min(l_val, L_link[h][i])
-                            u_val = max(u_val, U_link[h][i])
-                    L_node[id] = l_val
-                    U_node[id] = u_val
-                    for j in topo_order:
-                        if bush[i][j] == 1:
-                            L_link[i][j] = min(L_link[i][j], L_node[id]+weight_array_itter[i][j])
-                            U_link[i][j] = max(U_link[i][j], U_node[id]+weight_array_itter[i][j])
-                        
-                id += 1
-            # remove infs for clarity
-            U_link[np.isinf(U_link)] = 0
-            L_link[np.isinf(L_link)] = 0
-
-
-
-            # DIVERGENCE NODE LOOP
-            loop = True
-            while loop is True:
-                # determine topoligcally last node in the bush
-                i = topo_order[-1]
-                # determine the longest and shortest paths from U and L Labels
-                max_val = -np.inf
-                min_val = np.inf
-                max_path = [i]
-                min_path = [i]
-                for h in topo_order:
-                    # TODO: same todo as last loop, i think this can be optimized due to topological nature of list
-                    if bush[h][i] == 1:
-                        if max_val < U_link[h][i]:
-                            max_val = U_link[h][i]
-                            next_node_max = h
-                        if min_val > L_link[h][i]:
-                            min_val = L_link[h][i]
-                            next_node_min = h
-                max_path.append(next_node_max)
-                min_path.append(next_node_min)
-
-                # loop for max path
-                while max_path[-1] != origin:
-                    max_val = -np.inf
-                    for h in topo_order:
-                        if bush[h][next_node_max] == 1: 
-                            if max_val < U_link[h][next_node_max]:
-                                max_val = U_link[h][next_node_max]
-                                next_node_holder = h
-                    max_path.append(next_node_holder)
-                    next_node_max = next_node_holder
-
-                # loop for min path
-                while min_path[-1] != origin:
-                    min_val = np.inf
-                    for h in topo_order:
-                        if bush[h][next_node_min] == 1: 
-                            if min_val > L_link[h][next_node_min]:
-                                min_val = L_link[h][next_node_min]
-                                next_node_holder = h
-
-                    min_path.append(next_node_holder)
-                    next_node_min = next_node_holder
-
-
-                #print(f"min path {min_path}={L_node[-1]} and max path {max_path}={U_node[-1]}")
-                # reverse order of lists for better comprehension
-                min_path = min_path[::-1]
-                max_path = max_path[::-1]
-
-
-                # if max and min path are the same, there is only one path and therefore we do not need to shift flow
-                if min_path == max_path:
-                    loop=False
-                
-                # determine divergence node "a" from min and max paths
-                # Divergence node is the last node common to both
-                else:
-                    for val in min_path[-2::-1]:
-                        if val in max_path[-2::-1]:
-                            a = val
-                            break
-
-                    # TODO: I don't know if this below alteration of i and a is valid or fixing the negative delta h problem
-                    # need to determine if set of a to i only has a single path: if so, a and I need to shift back common nodes
-                    separation = min_path.index(i) - min_path.index(a) 
-                    while separation == 1:
-                        i = copy.deepcopy(a)
-                        new_index_min = min_path.index(a)-1
-                        new_index_max = max_path.index(a)-1
-                        for val in min_path[new_index_min::-1]:
-                            if val in max_path[new_index_max::-1]:
-                                a=val
-                        separation = min_path.index(i) - min_path.index(a)
-
-
-                
-                    # extract sigma_l and sigma_u, the list of links from a to i
-                    sigma_U = max_path[max_path.index(a):(max_path.index(i)+1)]
-                    sigma_L = min_path[min_path.index(a):(min_path.index(i)+1)]
-
-                    # calculate delta h, equation 6.61 in the textbook
-                    numerator = (U_node[topo_order.index(i)] - U_node[topo_order.index(a)]) - (L_node[topo_order.index(i)] - L_node[topo_order.index(a)])
-                    # print(np.around(U_link,1))
-                    # print(np.around(L_link,1))
-                    # print(f"Ui: {U_node[topo_order.index(i)]} Ua: {U_node[topo_order.index(a)]} Li: {L_node[topo_order.index(i)]} La: {L_node[topo_order.index(a)]} ")
-                    # print(numerator, i ,a)
-                    # print(min_path)
-                    # print(max_path)
-                   
-                    # TODO: need to optimize the calculation of denominator based on if links have the same or different BPR
-                    # FOR NOW: Just calcualting the whole matrix due to the sample data being used
-                    
-                    derivative_division_array = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                                                [0, 0, 20000, 0, 20000, 0, 0, 0, 0, 0],
-                                                [0, 0, 0, 20000, 0, 5000, 0, 0, 0, 0],
-                                                [0, 0, 0, 0, 0, 0, 20000, 0, 0, 0],
-                                                [0, 0, 0, 0, 0, 5000, 0, 20000, 0, 0],
-                                                [0, 0, 0, 0, 0, 0, 5000, 0, 5000, 0],
-                                                [0, 0, 0, 0, 0, 0, 0, 0, 0, 20000],
-                                                [0, 0, 0, 0, 0, 0, 0, 0, 20000, 0],
-                                                [0, 0, 0, 0, 0, 0, 0, 0, 0, 5000],
-                                                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
-
-
-                    derivative_array = flow_array/derivative_division_array
-                    denominator = 0
-
-                    id = 0
-                    while id < len(sigma_L)-1:
-                        denominator += derivative_array[sigma_L[id]][sigma_L[id+1]]
-                        id += 1  
-                    id = 0
-                    while id < len(sigma_U)-1:
-                        denominator += derivative_array[sigma_U[id]][sigma_U[id+1]]
-                        id += 1
-
-                    # set delta_h value
-                    delta_h = numerator/denominator
-
-                    # determine delta_h based on minimum constraints - only have to look at 
-                    id = 0
-                    while id < len(sigma_U)-1:
-                        if delta_h <= flow_array[sigma_U[id]][sigma_U[id+1]]:
-                            pass
-                        else:
-                            delta_h = flow_array[sigma_U[id]][sigma_U[id+1]]
-                        id += 1
-
-                    # Shift flows 
-                    id = 0
-                    while id < len(sigma_L)-1:
-                        flow_array[sigma_L[id]][sigma_L[id+1]] += delta_h
-                        id += 1
-                    id = 0
-                    while id < len(sigma_U)-1:
-                        flow_array[sigma_U[id]][sigma_U[id+1]] -= delta_h
-                        id += 1
-
-
-
-                    # at end of loop, slice off last value and repeat
-                    topo_order = topo_order[:-1]
-                
+        # sum flow on bushes for initial network flow
+        flow_array = np.zeros_like(weight_array)
+        for bush in bush_flows:
+            flow_array += bush
         
-                
-            # update the weight array
-            # TODO change to BPR function
-            weight_array_itter = (flow_array/division_array)**2+addition_array
-            weight_array_itter = np.nan_to_num(weight_array_itter)
+        # calculate initial network travel times
+        # TODO Change to fit BPR function THIS IS A MUST
+        division_array = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                                        [0, 0, 200, 0, 200, 0, 0, 0, 0, 0],
+                                        [0, 0, 0, 200, 0, 100, 0, 0, 0, 0],
+                                        [0, 0, 0, 0, 0, 0, 200, 0, 0, 0],
+                                        [0, 0, 0, 0, 0, 100, 0, 200, 0, 0],
+                                        [0, 0, 0, 0, 0, 0, 100, 0, 100, 0],
+                                        [0, 0, 0, 0, 0, 0, 0, 0, 0, 200],
+                                        [0, 0, 0, 0, 0, 0, 0, 0, 200, 0],
+                                        [0, 0, 0, 0, 0, 0, 0, 0, 0, 100],
+                                        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+        addition_array = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                                [0, 0, 3, 0, 3, 0, 0, 0, 0, 0],
+                                [0, 0, 0, 3, 0, 5, 0, 0, 0, 0],
+                                [0, 0, 0, 0, 0, 0, 3, 0, 0, 0],
+                                [0, 0, 0, 0, 0, 5, 0, 3, 0, 0],
+                                [0, 0, 0, 0, 0, 0, 5, 0, 5, 0],
+                                [0, 0, 0, 0, 0, 0, 0, 0, 0, 3],
+                                [0, 0, 0, 0, 0, 0, 0, 0, 3, 0],
+                                [0, 0, 0, 0, 0, 0, 0, 0, 0, 5],
+                                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+    
+        # TODO change to BPR function
+        weight_array_itter = (flow_array/division_array)**2+addition_array
+        weight_array_itter = np.nan_to_num(weight_array_itter)
+    
+
+        # Begin the loops of, for each bush,:
+            # 1. find if shortcuts exist (i.e., find new shortest path from O-D, if it uses links not on bush, add them)
+                # 1a. find shortest path
+                # 1b. add shortcuts to bush
+            # 2. Calculate L and U labels in forward topological order
+            # 3. conduct divergence node determination loop to shift flows using Newton's method
+            # 4. After all Newton's adjustments for this bush, calculate new network flow and adjust travel times
+            # repeat for each bush
+
+        # ITER ETC. ETC. GOES HERE
+        iter=0
+        while iter <= 10:
+
+            for idx, bush in enumerate(bushes):
+                # set variables
+                origin = OD_matrix[idx][0]
+                flow = OD_matrix[idx][1]
+                destination = OD_matrix[idx][2]
+                #topo_order = topo_orders[idx]
+                bush_flow = bush_flows[idx]
+
+                # 1. FIND SHORTCUTS AND ADD TO BUSH
+                # find shortest path from origin to destination
+                backnode, costlabel = shortestPath(origin, capacity_array, weight_array_itter)
+                path, cost = pathTo(backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
+                # append short cuts on bush if they exist
+                id = 0
+                while id < len(path)-1:
+                    i=path[id]
+                    j=path[id+1]
+                    if bush[i][j] == -1:
+                        bush[i][j] = 1
+                    id += 1
+
+                # 2. CALCULATE L AND U LABELS IN FORWARD TOPOLOGICAL ORDER
+                # conduct topological ordering from the origin node
+                topo_order = topo_order_function(bush, origin=origin, weight_array=weight_array_itter, num_nodes=num_nodes, node_list=node_list)
+                # Set L and U variables
+                L_link = np.full_like(weight_array, np.inf)
+                L_node = np.full(len(topo_order), np.inf)
+                U_link = np.full_like(weight_array, -np.inf)
+                U_node = np.full(len(topo_order), -np.inf)
+                # L and U at r (origin) are equal to 0
+                L_node[0] = 0
+                U_node[0] = 0
+
+                # determine labels in forward topological ordering
+                id=0
+                while id <= len(topo_order)-1:
+                    
+                    # for first in topological order
+                    i = topo_order[id]
+                    if id==0:
+                        # TODO: I think this can be optimized to only search for values in topo_order in position higher than what we are currently are at - the whole benefit of using topo order also check on this feature below in this same loop - CAN MAKE IT BETTER
+                        for j in topo_order:
+                            if bush[i][j] == 1:
+                                L_link[i][j] = weight_array_itter[i][j]
+                                U_link[i][j] = weight_array_itter[i][j]
+                    
+                    # for last in topological order
+                    elif id == len(topo_order)-1:
+                        l_val = L_node[id]
+                        u_val = U_node[id]
+                        for h in topo_order:
+                            if bush[h][i] == 1:
+                                l_val = min(l_val, L_link[h][i])
+                                u_val = max(l_val, U_link[h][i])
+                        L_node[id] = l_val
+                        U_node[id] = u_val
+                    
+                    # for all others
+                    else:
+                        j=topo_order[id+1]
+                        l_val = L_node[id]
+                        u_val = U_node[id]
+                        for h in topo_order:
+                            if bush[h][i] == 1:
+                                l_val = min(l_val, L_link[h][i])
+                                u_val = max(u_val, U_link[h][i])
+                        L_node[id] = l_val
+                        U_node[id] = u_val
+                        for j in topo_order:
+                            if bush[i][j] == 1:
+                                L_link[i][j] = min(L_link[i][j], L_node[id]+weight_array_itter[i][j])
+                                U_link[i][j] = max(U_link[i][j], U_node[id]+weight_array_itter[i][j])
+                            
+                    id += 1
+                # remove infs for clarity
+                U_link[np.isinf(U_link)] = 0
+                L_link[np.isinf(L_link)] = 0
+
+
+
+                # DIVERGENCE NODE LOOP
+                loop = True
+                while loop is True:
+                    # determine topoligcally last node in the bush
+                    i = topo_order[-1]
+                    # determine the longest and shortest paths from U and L Labels
+                    max_val = -np.inf
+                    min_val = np.inf
+                    max_path = [i]
+                    min_path = [i]
+                    for h in topo_order:
+                        # TODO: same todo as last loop, i think this can be optimized due to topological nature of list
+                        if bush[h][i] == 1:
+                            if max_val < U_link[h][i]:
+                                max_val = U_link[h][i]
+                                next_node_max = h
+                            if min_val > L_link[h][i]:
+                                min_val = L_link[h][i]
+                                next_node_min = h
+                    max_path.append(next_node_max)
+                    min_path.append(next_node_min)
+
+                    # loop for max path
+                    while max_path[-1] != origin:
+                        max_val = -np.inf
+                        for h in topo_order:
+                            if bush[h][next_node_max] == 1: 
+                                if max_val < U_link[h][next_node_max]:
+                                    max_val = U_link[h][next_node_max]
+                                    next_node_holder = h
+                        max_path.append(next_node_holder)
+                        next_node_max = next_node_holder
+
+                    # loop for min path
+                    while min_path[-1] != origin:
+                        min_val = np.inf
+                        for h in topo_order:
+                            if bush[h][next_node_min] == 1: 
+                                if min_val > L_link[h][next_node_min]:
+                                    min_val = L_link[h][next_node_min]
+                                    next_node_holder = h
+
+                        min_path.append(next_node_holder)
+                        next_node_min = next_node_holder
+
+
+                    #print(f"min path {min_path}={L_node[-1]} and max path {max_path}={U_node[-1]}")
+                    # reverse order of lists for better comprehension
+                    min_path = min_path[::-1]
+                    max_path = max_path[::-1]
+
+
+                    # if max and min path are the same, there is only one path and therefore we do not need to shift flow
+                    if min_path == max_path:
+                        loop=False
+                    
+                    # determine divergence node "a" from min and max paths
+                    # Divergence node is the last node common to both
+                    else:
+                        for val in min_path[-2::-1]:
+                            if val in max_path[-2::-1]:
+                                a = val
+                                break
+
+                        # TODO: I don't know if this below alteration of i and a is valid or fixing the negative delta h problem
+                        # need to determine if set of a to i only has a single path: if so, a and I need to shift back common nodes
+                        separation = min_path.index(i) - min_path.index(a) 
+                        while separation == 1:
+                            i = copy.deepcopy(a)
+                            new_index_min = min_path.index(a)-1
+                            new_index_max = max_path.index(a)-1
+                            for val in min_path[new_index_min::-1]:
+                                if val in max_path[new_index_max::-1]:
+                                    a=val
+                            separation = min_path.index(i) - min_path.index(a)
+
+
+                    
+                        # extract sigma_l and sigma_u, the list of links from a to i
+                        sigma_U = max_path[max_path.index(a):(max_path.index(i)+1)]
+                        sigma_L = min_path[min_path.index(a):(min_path.index(i)+1)]
+
+                        # calculate delta h, equation 6.61 in the textbook
+                        numerator = (U_node[topo_order.index(i)] - U_node[topo_order.index(a)]) - (L_node[topo_order.index(i)] - L_node[topo_order.index(a)])
+                        # print(np.around(U_link,1))
+                        # print(np.around(L_link,1))
+                        # print(f"Ui: {U_node[topo_order.index(i)]} Ua: {U_node[topo_order.index(a)]} Li: {L_node[topo_order.index(i)]} La: {L_node[topo_order.index(a)]} ")
+                        # print(numerator, i ,a)
+                        # print(min_path)
+                        # print(max_path)
+                    
+                        # TODO: need to optimize the calculation of denominator based on if links have the same or different BPR
+                        # FOR NOW: Just calcualting the whole matrix due to the sample data being used
+                        
+                        derivative_division_array = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                                                    [0, 0, 20000, 0, 20000, 0, 0, 0, 0, 0],
+                                                    [0, 0, 0, 20000, 0, 5000, 0, 0, 0, 0],
+                                                    [0, 0, 0, 0, 0, 0, 20000, 0, 0, 0],
+                                                    [0, 0, 0, 0, 0, 5000, 0, 20000, 0, 0],
+                                                    [0, 0, 0, 0, 0, 0, 5000, 0, 5000, 0],
+                                                    [0, 0, 0, 0, 0, 0, 0, 0, 0, 20000],
+                                                    [0, 0, 0, 0, 0, 0, 0, 0, 20000, 0],
+                                                    [0, 0, 0, 0, 0, 0, 0, 0, 0, 5000],
+                                                    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+
+
+                        derivative_array = flow_array/derivative_division_array
+                        denominator = 0
+
+                        id = 0
+                        while id < len(sigma_L)-1:
+                            denominator += derivative_array[sigma_L[id]][sigma_L[id+1]]
+                            id += 1  
+                        id = 0
+                        while id < len(sigma_U)-1:
+                            denominator += derivative_array[sigma_U[id]][sigma_U[id+1]]
+                            id += 1
+
+                        # set delta_h value
+                        delta_h = numerator/denominator
+
+                        # determine delta_h based on minimum constraints - only have to look at 
+                        id = 0
+                        while id < len(sigma_U)-1:
+                            if delta_h <= flow_array[sigma_U[id]][sigma_U[id+1]]:
+                                pass
+                            else:
+                                delta_h = flow_array[sigma_U[id]][sigma_U[id+1]]
+                            id += 1
+
+                        # Shift flows 
+                        id = 0
+                        while id < len(sigma_L)-1:
+                            flow_array[sigma_L[id]][sigma_L[id+1]] += delta_h
+                            id += 1
+                        id = 0
+                        while id < len(sigma_U)-1:
+                            flow_array[sigma_U[id]][sigma_U[id+1]] -= delta_h
+                            id += 1
+
+
+
+                        # at end of loop, slice off last value and repeat
+                        topo_order = topo_order[:-1]
+                    
+            
+                    
+                # update the weight array
+                # TODO change to BPR function
+                weight_array_itter = (flow_array/division_array)**2+addition_array
+                weight_array_itter = np.nan_to_num(weight_array_itter)
 
 
 
 
 
-        # calculate termination criteria
-        SPTT = 0
-        for idx, x in enumerate(OD_matrix):
-            origin = np.int(x[0])
-            destination = np.int(x[2])
-            flow = x[1]
-            # Calculate shortest paths
-            backnode, costlabel = shortestPath(
-                origin=origin, capacity_array=capacity_array, weight_array=weight_array_itter)
-            path, cost = pathTo(
-                backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
-            # For shortest path travel time calculation (termination criteria)
-            SPTT += cost*flow
+            # calculate termination criteria
+            SPTT = 0
+            for idx, x in enumerate(OD_matrix):
+                origin = np.int(x[0])
+                destination = np.int(x[2])
+                flow = x[1]
+                # Calculate shortest paths
+                backnode, costlabel = shortestPath(
+                    origin=origin, capacity_array=capacity_array, weight_array=weight_array_itter)
+                path, cost = pathTo(
+                    backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
+                # For shortest path travel time calculation (termination criteria)
+                SPTT += cost*flow
 
-        # termination criteria
-        TSTT = np.sum(np.multiply(flow_array, weight_array_itter))
-        AEC = (TSTT-SPTT)/sum_d
-        RG = TSTT/SPTT - 1
-        print(AEC)
+            # termination criteria
+            TSTT = np.sum(np.multiply(flow_array, weight_array_itter))
+            AEC = (TSTT-SPTT)/sum_d
+            RG = TSTT/SPTT - 1
+            print(AEC)
 
-        iter +=1
-    print(np.around(flow_array,1))
+            iter +=1
+        print(np.around(flow_array,1))
 
     test='output'
     return test
