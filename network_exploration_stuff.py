@@ -1398,7 +1398,8 @@ def traffic_assignment(G='',
                         G_capacity='capacity', 
                         G_weight='travel_time', 
                         algorithm='link_based', 
-                        method='CFW'):
+                        method='CFW',
+                        link_performance='BPR'):
     """
     This is my attempt at a traffic assignment problem, with options for user equilibirum (UE), and system optimal (SO) solutions,
     Ideally, I would also like to add different algorithms (link-based, path-based, and bush-based) to test their operations, 
@@ -1410,22 +1411,28 @@ def traffic_assignment(G='',
     Also plan on using different types of termination criteria (e.g., AEC option, number of iterations option for testing purposes, etc. )
 
     Algorithm argument: Whether to use link, path, or bush based algorithm
-    method argument: if the algorithm is multiple options (e.g., MSA versus CFW for link based algorithms)
+    method argument: if the algorithm is multiple options (e.g., MSA versus CFW for link based algorithms). For now, only link based algorithms have different methods.
+        These are the algorithms that will can be utilized:
+            - Link Based
+                - Method of Successive Averages (MSA)
+                - Bisection
+                - Newton's Method
+                - Conjugate Frank-Wolfe
+            
+            - Path Based
+                - Gradient Projection
+            
+            -Bush Based 
+                - Algorithm B 
+                - (Maybe later) Origin-based assignment
+                - (Maybe later) Linear user cost equilibrium
 
-    These are the algorithms that will can be utilized:
-        - Link Based
-            - Method of Successive Averages (MSA)
-            - Bisection
-            - Newton's Method
-            - Conjugate Frank-Wolfe
-        
-        - Path Based
-            - Gradient Projection
-        
-        -Bush Based 
-             - Algorithm B 
-             - (Maybe later) Origin-based assignment
-             - (Maybe later) Linear user cost equilibrium
+    Link_performance argument: determines which link peformance equation to be utilized (e.g., BPR).
+        Right now, only focused on BPR but could expand to include the following:
+            - Davidson's delay model
+            - Akcelik function
+            - Conical delay model
+
     """
 
 
@@ -1450,7 +1457,7 @@ def traffic_assignment(G='',
     nx.set_edge_attributes(G, values=2300, name=G_capacity)
     
     # Set BPR alpha and beta constants
-    # TODO: FOR NOW, SET AS CONSTANT - MIGHT BE A FUNCTION OF THE TYPE OF ROAD
+    # TODO: FOR NOW, SET AS CONSTANT - MIGHT BE A FUNCTION OF THE TYPE OF ROAD - THIS SHOULD ALSO LIKELY BE DONE ELSEWHERE
         # HOWEVER: as an array/matrix, increases the computational time greatly
     nx.set_edge_attributes(G, values=0.15, name='alpha')
     nx.set_edge_attributes(G, values=4, name='beta')
@@ -1567,10 +1574,175 @@ def traffic_assignment(G='',
     # set variables for link algorithm
     sum_d = 2000
 
-
-
     ################################################################################################################################
 
+
+    # WRITE FUNCTIONS FOR CALCULATING BPR FUNCTIONS FOR WEIGHT ARRAY AND WEIGHT ARRAY DERIVATIVE
+    # I think for now it would be easiest to assume that every road has the same equation?
+    # weight_array variable should remain the free flow time array
+        # weight_array_itter (or weight_array_iter, need to fix spelling for different algorithms) will be the changing weight array with each iteration
+
+    # LINK PERFORMANCE HELPER FUNCTIONS 
+    # FIXME: new helper functions go here
+    # So far, only link_performance_function and link_performance derivative require equation inputs 
+
+    def link_performance_function(capacity_array,flow_array,weight_array,eq=link_performance,alpha_array=0,beta_array=0):
+        """ Function returning the weight_array_iter array based on user selected equation
+        
+        Universival arguments:
+            capacity_array == node-node array of link capacities
+            flow_array     == node-node array of link flows
+            weight_array   == node-node array of free-flow weights (i.e., zero flow travel time)
+
+        BPR arguments:
+            TODO: right now I am not sure if array of values will work, need to double check
+            alpha_array == either node-node array of alpha values for each link OR single value 
+            beta_array  == either node-node array of beta values for each link OR single value     
+
+        returns: weight_array_iter
+        """
+        
+        if eq=="BPR":
+            weight_array_iter = weight_array*(1+alpha_array*(flow_array/capacity_array)**beta_array)
+        # elif eq == "Davidsons":
+            # pass
+        
+        return weight_array_iter
+
+
+    def link_performance_derivative(capacity_array, flow_array, weight_array, eq=link_performance, alpha_array=0, beta_array=0):
+        """ Function returning the derivative array based on user selected equation
+        
+        Universival arguments:
+            capacity_array == node-node array of link capacities
+            flow_array     == node-node array of link flows
+            weight_array   == node-node array of free-flow weights (i.e., zero flow travel time)
+
+        BPR arguments:
+            TODO: right now I am not sure if array of values will work, need to double check
+            alpha_array == either node-node array of alpha values for each link OR single value 
+            beta_array  == either node-node array of beta values for each link OR single value     
+
+        returns: link_performance_derivative
+        """
+
+        if eq == "BPR":
+            link_performance_derivative = (
+                beta_array*weight_array*alpha_array/capacity_array)*flow_array**(beta_array-1)
+        # elif eq == "Davidsons":
+            # pass
+
+        return link_performance_derivative
+
+
+    def bisection_zeta(lambda_val, flow_array_star, capacity_array, flow_array, weight_array, eq=link_performance, alpha_array=0, beta_array=0):
+        """ Function returning the zeta value when using the bisection link-based method
+        
+        Universival arguments:
+            lambda_val      == lambda value to shift flow
+            flow_array_star == updated flow array
+            capacity_array  == node-node array of link capacities
+            flow_array      == node-node array of link flows
+            weight_array    == node-node array of free-flow weights (i.e., zero flow travel time)
+
+        BPR arguments:
+            TODO: right now I am not sure if array of values will work, need to double check
+            alpha_array == either node-node array of alpha values for each link OR single value 
+            beta_array  == either node-node array of beta values for each link OR single value     
+
+        returns: bisection zeta value
+        """
+        x_hat = lambda_val*flow_array_star+(1-lambda_val)*flow_array
+
+        x_hat_link_performance = link_performance_function(capacity_array=capacity_array, 
+                                                           flow_array=x_hat,
+                                                           weight_array=weight_array,
+                                                            eq=eq, 
+                                                            alpha_array=alpha_array, 
+                                                            beta_array=beta_array)
+
+        zeta = np.sum(x_hat_link_performance*(flow_array_star-flow_array))
+
+        return(zeta)
+        
+
+    def newton_f(lambda_val, flow_array_star, capacity_array, flow_array, weight_array, eq=link_performance, alpha_array=0, beta_array=0):
+        """ Function returning the f and f_prime values when using the newton's and CFW link-based methods
+        
+        Universival arguments:
+            lambda_val      == lambda value to shift flow
+            flow_array_star == updated flow array
+            capacity_array  == node-node array of link capacities
+            flow_array      == node-node array of link flows
+            weight_array    == node-node array of free-flow weights (i.e., zero flow travel time)
+
+        BPR arguments:
+            TODO: right now I am not sure if array of values will work, need to double check
+            alpha_array == either node-node array of alpha values for each link OR single value 
+            beta_array  == either node-node array of beta values for each link OR single value     
+
+        returns: f and f_prime
+        """
+        x_hat = lambda_val*flow_array_star+(1-lambda_val)*flow_array
+
+        x_hat_link_performance = link_performance_function(capacity_array=capacity_array,
+                                                           flow_array=x_hat,
+                                                           weight_array=weight_array,
+                                                           eq=eq,
+                                                           alpha_array=alpha_array,
+                                                           beta_array=beta_array)
+
+        x_hat_link_performance_derivative = link_performance_derivative(capacity_array=capacity_array, 
+                                                                        flow_array=x_hat,
+                                                                        weight_array=weight_array, 
+                                                                        eq=eq, 
+                                                                        alpha_array=alpha_array, 
+                                                                        beta_array=beta_array)
+
+        f = np.sum(x_hat_link_performance*(flow_array_star-flow_array))
+        f_prime = np.sum(x_hat_link_performance_derivative*(flow_array_star-flow_array)**2)
+
+        return f, f_prime
+
+
+    def cfw_alpha(flow_array_star_old, flow_array_star, capacity_array, flow_array, weight_array, eq=link_performance, alpha_array=0, beta_array=0):
+        """ Function returning the numerator and denominator of alpha value for CFW link-based method
+
+        Universival arguments:
+            flow_array_star_old == previous updated flow array
+            flow_array_star     == updated flow array (the AON, or All-Or-Nothing assignment)
+            capacity_array      == node-node array of link capacities
+            flow_array          == node-node array of link flows
+            weight_array        == node-node array of free-flow weights (i.e., zero flow travel time)
+
+        BPR arguments:
+            TODO: right now I am not sure if array of values will work, need to double check
+            alpha_array == either node-node array of alpha values for each link OR single value 
+            beta_array  == either node-node array of beta values for each link OR single value     
+
+        returns: f and f_prime
+        """
+
+        deriv = link_performance_derivative(capacity_array=capacity_array, 
+                                            flow_array=flow_array, 
+                                            weight_array=weight_array, 
+                                            eq=eq, 
+                                            alpha_array=alpha_array, 
+                                            beta_array=beta_array)
+
+        #eq (6.3) in boyles textbook page 176
+        item1 = flow_array_star_old - flow_array
+        item2 = flow_array_star - flow_array
+        item3 = flow_array_star - flow_array_star_old
+        
+
+        num = np.sum(deriv*item1*item2)
+        den = np.sum(deriv*item1*item3)
+        return num, den
+
+
+
+    # ALGORITHMS
     # LINK-BASED ALGORITHM
     if algorithm == "link_based":
 
@@ -1584,8 +1756,9 @@ def traffic_assignment(G='',
         # b. Create initial feasible flow array
         for x in OD_matrix:
             origin = np.int(x[0])
-            destination = np.int(x[2])
             flow = x[1]
+            destination = np.int(x[2])
+            
             # calculate shortest path from an origin to all other locations
             backnode, costlabel = shortestPath(origin=origin, capacity_array=capacity_array, weight_array=weight_array)
             # determine path and cost from origin to super sink
@@ -1600,8 +1773,7 @@ def traffic_assignment(G='',
 
         # TERMINATION CRITERIA
         # Could do # of iterations, or AEC <= a value, or RG <= value
-        # TODO: For now - set to number of iterations to compare to textbook as I build algorithm
-        # Keep the iter counter to track number of iterations regardless of termination criteria
+        # TODO: Fix termination criteria loop
         iterations = 3
         iter=0
 
@@ -1625,8 +1797,9 @@ def traffic_assignment(G='',
 
         while iter <= iterations:
             # 1. recalculate weight_array
+            # FIXME: EQUATION WRITTEN: Replace with BPR function
             weight_array_iter = flow_array/100 +10         # Example network BPR
-            #weight_array_iter = weight_array*(1+alpha_array*(flow_array/capacity_array)**beta_array)      # Real network BPR
+            # weight_array_iter = weight_array*(1+alpha_array*(flow_array/capacity_array)**beta_array)      # Real network BPR
             
             # 2. Create empty kappa array and flow_array_star
             kappa=np.zeros([1,np.shape(OD_matrix)[0]])
@@ -1676,7 +1849,7 @@ def traffic_assignment(G='',
                     # Calculate x_hat, and subsequently zeta
                     x_hat = lambda_val*flow_array_star+(1-lambda_val)*flow_array
                     zeta = np.sum((x_hat/100 + 10)*(flow_array_star-flow_array))   # Example network BPR
-                    # TODO: Check BPR math below
+                    # FIXME: EQUATION WRITTEN: Check BPR math below and remove above
                     # zeta = np.sum(((((lambda_val*flow_array_star+(1-lambda_val)*flow_array)/capacity_array)**beta_array*alpha_array+1)*weight_array)*(flow_array_star-flow_array)) 
 
                     # determine shift
@@ -1699,7 +1872,7 @@ def traffic_assignment(G='',
                 # calculate f and f_prime
                 f = np.sum((x_hat/100 + 10)*(flow_array_star-flow_array))  #  example network BPR
                 f_prime = np.sum((1/100)*(flow_array_star-flow_array)**2)      # example network BPR
-                # TODO: Program more complex BPR function
+                # FIXME: EQUATION WRITTEN: Program more complex BPR function
                 # Update Lambda
                 lambda_val -= f/f_prime
                 if lambda_val > 1:
@@ -1720,6 +1893,7 @@ def traffic_assignment(G='',
                     item1 = flow_array_star_old - flow_array
                     item2 = flow_array_star - flow_array
                     item3 = flow_array_star - flow_array_star_old
+                    # FIXME : EQUATION WRITTEN: BPR function
                     num = np.sum((1/100)*item1*item2)
                     den = np.sum((1/100)*item1*item3)
                     if den == 0:
@@ -1742,7 +1916,7 @@ def traffic_assignment(G='',
                 f = np.sum((x_hat/100 + 10)*(flow_array_star-flow_array))
                 # example network BPR
                 f_prime = np.sum((1/100)*(flow_array_star-flow_array)**2)
-                # TODO: Program more complex BPR function
+                # FIXME: EQUATION WRITTEN: Program more complex BPR function (SEE ABOVE EQUATIONS)
                 # Update Lambda
                 lambda_val -= f/f_prime
                 if lambda_val > 1:
@@ -1763,7 +1937,7 @@ def traffic_assignment(G='',
             TSTT_list.append(TSTT)
             SPTT_list.append(SPTT)
             RG_list.append(RG)
-
+            print(RG)
             iter +=1 
 
     
@@ -1778,7 +1952,8 @@ def traffic_assignment(G='',
 
         # Initialize the flow and weight arrays
         flow_array = np.zeros_like(capacity_array)
-        weight_array_iter = flow_array/100 + 10         # Example BPR TODO: Update to real 
+        # FIXME : EQUATION WRITTEN: Example BPR : Update to real - I don't think this needs to be here? 
+        weight_array_iter = flow_array/100 + 10
 
         # Initialize nested list to store OD path information 
         # TODO: IDK if this should be a nested list, nested dictionary, or pandas dataframe
@@ -1802,7 +1977,7 @@ def traffic_assignment(G='',
             while i < len(path)-1:
                 flow_array[path[i]][path[i+1]] += flow
                 i += 1
-            # Example BPR TODO: Update to real
+            # FIXME : EQUATION WRITTEN: Example BPR : Update to real
             weight_array_iter = flow_array/100 + 10             
 
             # calculate new cost of shortest path
@@ -1892,7 +2067,7 @@ def traffic_assignment(G='',
                     # determine the sum of derivatives (denominator of delta_h equation)
                     den = 0
                     for link in unique_links:
-                        # TODO: update to derivative of real BPR function - currently set as sample network equation
+                        # FIXME: EQUATION WRITTEN: update to derivative of real BPR function - currently set as sample network equation
                         den += 1/100
                     
                     # calculate delta_h
@@ -1922,7 +2097,7 @@ def traffic_assignment(G='',
                     while i < len(path_hat)-1:
                         flow_array[path_hat[i]][path_hat[i+1]] += adj
                         i += 1
-                    # Example BPR TODO: Update to real
+                    # FIXME : EQUATION WRITTEN: BPR: Update to real
                     weight_array_iter = flow_array/100 + 10             
 
                     # WITH NEW WEIGHT ARRAY, NEW COSTS NEED TO BE CALCULATED AND ASSOCIATED WITH EACH PATH UNDER EXAMINATION
@@ -1959,8 +2134,8 @@ def traffic_assignment(G='',
                         
             iter+=1
 
-        print(paths_array)
-        pass
+        #print(paths_array)
+        # pass ---> I don't think this pass needs to be here
 
 
     elif algorithm == 'bush_based':
@@ -1972,6 +2147,7 @@ def traffic_assignment(G='',
 
 
         def topo_order_function(bush, origin, weight_array, num_nodes = num_nodes, node_list=node_list):
+            """Function to calculate topographic order on a bush."""
             # variables
             visited = [False] * (num_nodes)
 
@@ -2076,12 +2252,6 @@ def traffic_assignment(G='',
                 else:
                     prims_selected[reachable.index(y)] = True
                 num_edges+=1
-            
-
-
-            #topo_order = topo_order_function(bush=bush, num_nodes = num_nodes, node_list=node_list)
-
-
 
             # Set initial flow for each bush - flow along shortest path
             bush_flow = np.zeros_like(weight_array)
@@ -2105,7 +2275,7 @@ def traffic_assignment(G='',
             flow_array += bush
         
         # calculate initial network travel times
-        # TODO Change to fit BPR function THIS IS A MUST
+        # FIXME : EQUATION WRITTEN: Change to fit BPR function THIS IS A MUST
         division_array = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                                         [0, 0, 200, 0, 200, 0, 0, 0, 0, 0],
                                         [0, 0, 0, 200, 0, 100, 0, 0, 0, 0],
@@ -2270,12 +2440,9 @@ def traffic_assignment(G='',
                         min_path.append(next_node_holder)
                         next_node_min = next_node_holder
 
-
-                    #print(f"min path {min_path}={L_node[-1]} and max path {max_path}={U_node[-1]}")
                     # reverse order of lists for better comprehension
                     min_path = min_path[::-1]
                     max_path = max_path[::-1]
-
 
                     # if max and min path are the same, there is only one path and therefore we do not need to shift flow
                     if min_path == max_path:
@@ -2309,16 +2476,10 @@ def traffic_assignment(G='',
 
                         # calculate delta h, equation 6.61 in the textbook
                         numerator = (U_node[topo_order.index(i)] - U_node[topo_order.index(a)]) - (L_node[topo_order.index(i)] - L_node[topo_order.index(a)])
-                        # print(np.around(U_link,1))
-                        # print(np.around(L_link,1))
-                        # print(f"Ui: {U_node[topo_order.index(i)]} Ua: {U_node[topo_order.index(a)]} Li: {L_node[topo_order.index(i)]} La: {L_node[topo_order.index(a)]} ")
-                        # print(numerator, i ,a)
-                        # print(min_path)
-                        # print(max_path)
                     
                         # TODO: need to optimize the calculation of denominator based on if links have the same or different BPR
                         # FOR NOW: Just calcualting the whole matrix due to the sample data being used
-                        
+                        # FIXME: EQUATION WRITTEN: Fix BPR function
                         derivative_division_array = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                                                     [0, 0, 20000, 0, 20000, 0, 0, 0, 0, 0],
                                                     [0, 0, 0, 20000, 0, 5000, 0, 0, 0, 0],
@@ -2373,7 +2534,7 @@ def traffic_assignment(G='',
             
                     
                 # update the weight array
-                # TODO change to BPR function
+                # FIXME : EQUATION WRITTEN: Change to BPR function
                 weight_array_itter = (flow_array/division_array)**2+addition_array
                 weight_array_itter = np.nan_to_num(weight_array_itter)
 
@@ -2399,10 +2560,10 @@ def traffic_assignment(G='',
             TSTT = np.sum(np.multiply(flow_array, weight_array_itter))
             AEC = (TSTT-SPTT)/sum_d
             RG = TSTT/SPTT - 1
-            print(AEC)
+            print(RG)
 
             iter +=1
-        print(np.around(flow_array,1))
+        #print(np.around(flow_array,1))
 
     test='output'
     return test
