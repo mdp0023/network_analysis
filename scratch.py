@@ -46,6 +46,9 @@ G_inun = mynet.read_graph_from_disk(
 G = mynet.read_graph_from_disk(
     path='/home/mdp0023/Documents/Codes_Projects/network_analysis/Network_Testing_Data', name='AOI_Graph')
 
+# G_TA = mynet.read_graph_from_disk(
+#     path='/home/mdp0023/Documents/Codes_Projects/network_analysis/Network_Testing_Data', name='AOI_Graph_Traffic_Assignment')
+
 G = mynet.rename(G=G)
 G_inun = mynet.rename(G=G_inun)
 
@@ -102,10 +105,12 @@ G_out, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, re
     G=G, res_points=res_points, dest_points=food_points, G_demand='demand')
 
 
-# print the list of attribute names for eges and nodes
-# print(list(list(G_out.edges(data=True))[0][-1].keys()))
+# print the list of attribute names for edges and nodes
+#print(list(list(G_TA.edges(data=True))[0][-1].keys()))
 # print(list(list(G_out.nodes(data=True))[0][-1].keys()))
 
+# print(len(G_TA.edges))
+# print(len(G_TA.nodes))
 
 output = mynet.traffic_assignment(G=G, 
                                   res_points=res_points, 
@@ -113,9 +118,26 @@ output = mynet.traffic_assignment(G=G,
                                   G_demand='demand',
                                   G_capacity='capacity',
                                   G_weight='travel_time',
-                                  algorithm='bush_based',
+                                  algorithm='path_based',
                                   method='CFW')
 print(output)
+
+
+G_TA = mynet.read_graph_from_disk(
+    path='/home/mdp0023/Documents/Codes_Projects/network_analysis/Network_Testing_Data', name='AOI_Graph_Traffic_Assignment')
+
+mynet.plot_aoi(G=G_TA, res_parcels=res_locs,
+                    resource_parcels=food_locs,
+                    edge_width='TA_Flow',
+                    bbox=None,
+                    loss_access_parcels=None,
+                    scalebar=False,
+                    inundation=None,
+                    insets=None,
+                    save_loc=None)
+
+plt.show()
+
 
 # print node values for a specific attribute
 #print(nx.get_node_attributes(G_out,'demand'))
