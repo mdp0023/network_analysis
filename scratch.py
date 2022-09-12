@@ -115,18 +115,18 @@ G_out, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, re
 output = mynet.traffic_assignment(G=G, 
                                   res_points=res_points, 
                                   dest_points=food_points, 
-                                  G_demand='demand',
                                   G_capacity='capacity',
                                   G_weight='travel_time',
                                   algorithm='path_based',
-                                  method='CFW')
-print(output)
+                                  method='CFW',
+                                  termination_criteria=['iter',5])
 
 
-G_TA = mynet.read_graph_from_disk(
-    path='/home/mdp0023/Documents/Codes_Projects/network_analysis/Network_Testing_Data', name='AOI_Graph_Traffic_Assignment')
 
-mynet.plot_aoi(G=G_TA, res_parcels=res_locs,
+# G_TA = mynet.read_graph_from_disk(
+#     path='/home/mdp0023/Documents/Codes_Projects/network_analysis/Network_Testing_Data', name='AOI_Graph_Traffic_Assignment')
+
+mynet.plot_aoi(G=output[0], res_parcels=res_locs,
                     resource_parcels=food_locs,
                     edge_width='TA_Flow',
                     bbox=None,
@@ -134,7 +134,8 @@ mynet.plot_aoi(G=G_TA, res_parcels=res_locs,
                     scalebar=False,
                     inundation=None,
                     insets=None,
-                    save_loc=None)
+                    save_loc=None,
+                    raster=raster)
 
 plt.show()
 

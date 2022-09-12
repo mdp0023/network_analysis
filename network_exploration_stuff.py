@@ -11,32 +11,24 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 from scipy.stats import iqr
-import rasterio as rio
 from rasterio.plot import show
 import matplotlib.pylab as pl
 from matplotlib.colors import ListedColormap
-# import momepy as mpy
 from rasterstats import zonal_stats
 from matplotlib_scalebar.scalebar import ScaleBar
 import random
 import copy
-import time
 import heapq
 from collections import defaultdict
 
 # set some panda display options
 pd.set_option('display.max_columns', None)
 
-# todo: Is renaming the nodes from 1 to N really necessary?
-# TODO: Nearest node - some of the closest origin nodes are the destination
-#   nodes
-#   Solution right now is that after sources are marked, dest nodes are set to
-#   have a 0 demand (justificaiton: walking distance?)
+
+# TODO: Some of the closest origin nodes are the destination nodes - for now assuming that no paths need to be calculated (i.e., can just walk)
 # TODO: Add road capacities in min cost flow calculation
-# TODO: Need to use different method to determine random node variable name
-#   in the min cost flow function
-# TODO: Min cost flow and max cost flow functions have some repeat code
-#   I could condense a lot of the work
+# TODO: Need to use different method to determine random node variable name in the min cost flow function
+# TODO: Min cost flow and max cost flow functions have some repeat code - I could condense a lot of the work
 # TODO: travel disruption - right now using arbitrary disruption
 #   for example - flood classificaiton 1 is set to reduce speed by 75%
 #                 flood classificaiton 2 is set to reduce speed by 95%
@@ -52,18 +44,13 @@ pd.set_option('display.max_columns', None)
 #   examine this in more detail
 # TODO: In plot aoi - allow it to accept a list of dest parcels
 #   i.e., food and gas locations
-# TODO: When it comes to plotting, doing the different algorithms adds nodes
-#   and edges. Therefore, have to plot the un-manipulated networks
-#   this also means that they should be loaded seperately
 # TODO: read_graph_from_disk - problem with preserving dtypes so I hardcoded a
 #   temporary fix - right now it goes through the attributes and determines if
 #    it could be converted to a float - if it can it does
 #   this involves manually skipping oneway as well (i think b/c its bool)
 #   this was needed b/c  inundation_G load not preserve datatypes
-# TODO: rework methodology for determing what residents lose access to resource
-#   right now doing brute force calculation to determine which house one by one
-#   should be able to relate maximum flow results to this but ran out of time
 # TODO: convert parcel identificaiton (access vs. no access) to function
+# TODO: update shortest path and path to functions to the new modified ones - much quicker 
 
 
 
@@ -89,37 +76,37 @@ pd.set_option('display.max_columns', None)
 
 
 # VARIABLES USED #############################################################
-# file path
-path = "/home/mdp0023/Documents/Codes_Projects/\
-network_analysis/Network_Testing_Data"
-image_path = "/home/mdp0023/Documents/Codes_Projects/\
-network_analysis/Poster_Graphics"
-inset_path = "/home/mdp0023/Documents/Codes_Projects/network_analysis/bboxes"
-# AOI without buffer
-aoi_area = f'{path}/Neighborhood_Network_AOI.shp'
-# AOI with buffer
-aoi_buffer = f'{path}/Neighborhood_Network_AOI_Buf_1km.shp'
-# centroids of res parcels and food marts
-res_points_loc = f'{path}/Residential_Parcels_Points_Network_AOI.shp'
-food_points_loc = f'{path}/Food_Marts_Points_Network_AOI.shp'
-# shapefiles of res parcels and food marts
-res_parcels = f'{path}/Residential_Parcels_Network_AOI.shp'
-food_parcels = f'{path}/Food_Marts_Network_AOI.shp'
-# path for inundation
-inundation = f'{path}/Network_Inun.tif'
-raster = rio.open(inundation)
+# # file path
+# path = "/home/mdp0023/Documents/Codes_Projects/\
+# network_analysis/Network_Testing_Data"
+# image_path = "/home/mdp0023/Documents/Codes_Projects/\
+# network_analysis/Poster_Graphics"
+# inset_path = "/home/mdp0023/Documents/Codes_Projects/network_analysis/bboxes"
+# # AOI without buffer
+# aoi_area = f'{path}/Neighborhood_Network_AOI.shp'
+# # AOI with buffer
+# aoi_buffer = f'{path}/Neighborhood_Network_AOI_Buf_1km.shp'
+# # centroids of res parcels and food marts
+# res_points_loc = f'{path}/Residential_Parcels_Points_Network_AOI.shp'
+# food_points_loc = f'{path}/Food_Marts_Points_Network_AOI.shp'
+# # shapefiles of res parcels and food marts
+# res_parcels = f'{path}/Residential_Parcels_Network_AOI.shp'
+# food_parcels = f'{path}/Food_Marts_Network_AOI.shp'
+# # path for inundation
+# inundation = f'{path}/Network_Inun.tif'
+# raster = rio.open(inundation)
 
-# LOAD OTHER DATA ############################################################
-# shapefile centroids of residental plots
-res_points = gpd.read_file(res_points_loc)
-# shapefile of res parcels
-res_locs = gpd.read_file(res_parcels)
-# shapefile centroids of 3 foodmart plots
-food_points = gpd.read_file(food_points_loc)
-# shapefile of food mart parcels
-food_locs = gpd.read_file(food_parcels)
-# shapefile of area of interest
-aoi_area = gpd.read_file(aoi_area)
+# # LOAD OTHER DATA ############################################################
+# # shapefile centroids of residental plots
+# res_points = gpd.read_file(res_points_loc)
+# # shapefile of res parcels
+# res_locs = gpd.read_file(res_parcels)
+# # shapefile centroids of 3 foodmart plots
+# food_points = gpd.read_file(food_points_loc)
+# # shapefile of food mart parcels
+# food_locs = gpd.read_file(food_parcels)
+# # shapefile of area of interest
+# aoi_area = gpd.read_file(aoi_area)
 
 # THE FUNCTIONS #############################################################
 
@@ -607,7 +594,8 @@ def plot_aoi(G='', res_parcels='',
                     scalebar=False,
                     inundation=None, 
                     insets=None, 
-                    save_loc=None):
+                    save_loc=None,
+                    raster=None):
     '''
     Create a plot with commonly used features.
 
@@ -635,6 +623,8 @@ def plot_aoi(G='', res_parcels='',
     :type insets: list of strings
     :param save_loc: Location to save figure (*Default=None*).
     :type save_loc: string
+    param raster: raster of inundation extent
+    :type raster: .tif rile, use rasterio.open()
 
     :return: **fig**, the produced figure
     :rtype: matplotlib figure
@@ -1218,7 +1208,7 @@ def shortestPath(origin, capacity_array, weight_array):
     """
     This method finds the shortest path from origin to all other nodes
     in the network.  
-    Dijkstra's
+    Algorithm utilized is Dijkstra's.s
     """
     # Need the number of nodes for calculations
     numnodes = np.shape(capacity_array)[0]
@@ -1276,15 +1266,14 @@ def shortestPath(origin, capacity_array, weight_array):
     return (backnode, costlabel)
 
 
-
 def shortestPath_heap(origin, capacity_array, weight_array, adjlist):
     """
     This method finds the shortest path from origin to all other nodesin the network.
     Uses a binary heap priority que in an attempt to speed up the shortestPath function.
-    Dijkstra's
+    Shortest path algorithm utilized is Dijkstra's.
     going to use built in function in python called heapq
     """
-    # FIXME : add adjlist as input
+
     # Need the number of nodes for calculations
     numnodes = np.shape(capacity_array)[0]
 
@@ -1355,6 +1344,7 @@ def pathTo(backnode, costlabel, origin, destination):
     cost=np.asarray(cost)
     return(path, cost)
 
+
 def pathTo_mod(backnode, costlabel, origin, destination):
     """test pathTo function to output node-node pairs instead of list of nodes to avoid having to do loops elsewhere"""
     cost = costlabel[destination]
@@ -1388,7 +1378,8 @@ def pathTo_mod(backnode, costlabel, origin, destination):
     cost=np.asarray(cost)
     return(path, cost)
 
-#I DON'T THINK I NEED maxFlow OR mod_search
+
+###### I DON'T THINK I NEED maxFlow OR mod_search ######
 def maxFlow(source, sink, numnodes, capacity_array, weight_array):
     """
     This method finds a maximum flow in the network.  Return a tuple
@@ -1484,56 +1475,77 @@ def mod_search(source, flow, numnodes, capacity_array):
                 SEL.append(j)
                 backnode[j] = i
     return reachable, backnode
+###### I DON'T THINK I NEED maxFlow OR mod_search ######
 
 
-
-
-
-
-
-def traffic_assignment(G='',
-                        res_points='', 
-                        dest_points='', 
-                        G_demand='demand', 
+def traffic_assignment(G,
+                        res_points, 
+                        dest_points,  
                         G_capacity='capacity', 
                         G_weight='travel_time', 
-                        algorithm='link_based', 
+                        algorithm='path_based', 
                         method='CFW',
-                        link_performance='BPR'):
+                        link_performance='BPR',
+                        termination_criteria=['iter',0]):
     """
-    This is my attempt at a traffic assignment problem, with options for user equilibirum (UE), and system optimal (SO) solutions,
-    Ideally, I would also like to add different algorithms (link-based, path-based, and bush-based) to test their operations, 
-    To scale this computationally, I am thinking of writing this all in terms of numpy arrays - which may be faster
-    TODO: look into rewriting other code to also put in terms of numpy arrays? Not sure on this if necessary, feasible, or what
-            It's definitely feasible it's probably just not necessary - NetworkX is probably optimized for what we would need it for 
+    Solves the static traffic assignment problem based using algorithms and termination criteria from user inputs.
 
-    Plan is to also include options within each type of algorithm (e.g., MSA and Frank-Wolfe for link-based algorithms)
-    Also plan on using different types of termination criteria (e.g., AEC option, number of iterations option for testing purposes, etc. )
+    Taking in a network of roads, shapefile of residential points, and shapefile of destination points, all residential parcels are snapped to the nearest intesection and routed to the nearest destination (also snapped to nearest intersection). Each link has a theoretical capacity (G_capacity argument) and free flow travel time (G_weight argument) associated with it that are used as inputs into the link performance function (link_performance argument). Currently, only one link performance function is available, the user equilibrium BPR function (Bureau of Public Roads function). Other functions will be added in the future.
 
-    Algorithm argument: Whether to use link, path, or bush based algorithm
-    method argument: if the algorithm is multiple options (e.g., MSA versus CFW for link based algorithms). For now, only link based algorithms have different methods.
-        These are the algorithms that will can be utilized:
+    Furthermore, the user can define the type of algorithm (algorithm argument) as either link_based, path_based, or bush_based. Currently for link_based arguments only, there are multiple methods that could be used including: MSA (method of successive averages), Bisection, Newton's Method, and CFW (Conjugate Franke-Wolfe). 
+
+    The termination criteria (termination_criteria argument) is a list of length two, with the first argument identifying the type of criteria (e.g., the number of iterations, the relative gap value, etc.) and the second argument being the value to compare the criteria to.
+    
+    To summarize the algorithms and methods currently avaialble:
             - Link Based
                 - Method of Successive Averages (MSA)
                 - Bisection
                 - Newton's Method
-                - Conjugate Frank-Wolfe
+                - Conjugate Frank-Wolfe (CFW)
             
             - Path Based
                 - Gradient Projection
             
             -Bush Based 
                 - Algorithm B 
-                - (Maybe later) Origin-based assignment
-                - (Maybe later) Linear user cost equilibrium
 
-    Link_performance argument: determines which link peformance equation to be utilized (e.g., BPR).
-        Right now, only focused on BPR but could expand to include the following:
-            - Davidson's delay model
-            - Akcelik function
-            - Conical delay model
+
+    :param G: The graph network
+    :type G: networkx.Graph [Multi, MultiDi, Di]
+    :param res_points: Location of the residential parcel points
+    :type res_points: geopandas Geodataframe
+    :param dest_points: Location of the destination parcel points
+    :type dest_points: geopandas Geodataframe
+    :param G_capacity: Attribute of G that is theoretical road link capacity
+    :type G_capacity: string
+    :param G_weight: Attribute of G that is free flow travel time across link
+    :type G_weight: string
+    :param algorithm: Algorithm to be used to solve traffic assignment. Can be link_based, path_based, or bush_based
+    :type algorithm: string
+    :param method: Method of algorithm to be used. Currenlty only applies to link_based, with options of MSA, Bisection, Newton's Method, or CFW
+    :type method: string
+    :param link_performance: The link performance function to solve. Currenlty only BPR is available (user equilrium BPR to be specific)
+    :type link_performance: string
+    :param termination_criteria: The criteria type and comparision number to stop iterations. Available criteria include AEC, iters, and RG
+    :type termination_criteria: list, first element string and second element number
+
+    :returns:
+        - **G_output**, nx.Multigraph of road network with traffic assignment flow attribute, 'TA_Flow'
+        - **AEC_list**, list of average access cost, AEC, values for each iteration
+        - **TSTT_list**, list of total system travel times, TSTT, values for each iteration
+        - **SPTT_list**, list of shortest path travel times, SPTT, values for each iteration
+        - **RG_list**, list of relative gap, RG, values for each iteration
+        - **iter**, number of iterations completed
+    :rtype: tuple
+
+    
 
     """
+
+    # Right now, only focused on BPR but could expand to include the following:
+    #         - Davidson's delay model
+    #         - Akcelik function
+    #         - Conical delay model
 
 
     # Travel times must be whole numbers -  round values if not whole numbers
@@ -1550,15 +1562,12 @@ def traffic_assignment(G='',
     artificial_weight = 999999999999999999
     artificial_capacity = 999999999999999999
 
-
     # Theoretical capacity for each edge based on how many lanes there are
     # TODO: FOR NOW, SET AS A CONSTANT - I believe typically 2300 vehicles/hour per lane is a standard - need to research tho
     # This should also most likely be done before this section anyways
     nx.set_edge_attributes(G, values=20, name=G_capacity)
     
     # Set BPR alpha and beta constants
-    # TODO: FOR NOW, SET AS CONSTANT - MIGHT BE A FUNCTION OF THE TYPE OF ROAD - THIS SHOULD ALSO LIKELY BE DONE ELSEWHERE
-        # HOWEVER: as an array/matrix, increases the computational time greatly
     nx.set_edge_attributes(G, values=0.15, name='alpha')
     nx.set_edge_attributes(G, values=4, name='beta')
 
@@ -1595,14 +1604,12 @@ def traffic_assignment(G='',
         OD_matrix[idx][2] = len(G.nodes())-1             # destination node (when nodes reordered for numpy array, it has a value of length-1 (b/c of artifical origin 0 ))
         G.add_edge(x, super_sink, **{G_weight: artificial_weight, G_capacity: artificial_capacity})
 
-
     # d. Sort nodes in proper order
     #   This should in theory then preserve saying node '2' in array is node '2' in network g, especially with adding the artifical node, 0
     #   also rename the nodes in graph
     G = nx.convert_node_labels_to_integers(G, 0, ordering="sorted", label_attribute='old_label')
     nodes_in_order = sorted(G.nodes())
     
-
     # convert to capacity and weight arrays
     capacity_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight=G_capacity, nonedge=-1)    # array of theoretical link capacities
     weight_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight=G_weight, nonedge=-1)        # array of free flow weights (costs)
@@ -1613,7 +1620,7 @@ def traffic_assignment(G='',
     beta_array=4
     #weight_array_star = np.copy(weight_array)  # copy of free flow weights, what I am going to be changin with each iteration
     
-    # testing if an adjacency list is going to be more efficent
+    # create adjacency list - faster for some functions to use this instead of matrix
     adjlist = defaultdict(list)
     for i in range(capacity_array.shape[0]):
         for j in range(capacity_array.shape[0]):
@@ -1621,16 +1628,13 @@ def traffic_assignment(G='',
                 adjlist[i].append(j)
 
     # set variables
-    dest_id = len(G.nodes())-1   # destination node
-    #numnodes=len(G.nodes())      # number of nodes 
-    sum_d = positive_demand      # sum of the demand
-            # Initializing
-    num_nodes = weight_array.shape[0]
-    node_list = [num for num in range(0, num_nodes)]
+    #dest_id = len(G.nodes())-1                          # destination node
+    sum_d = positive_demand                             # sum of the demand
+    num_nodes = weight_array.shape[0]                   # number of noads
+    node_list = [num for num in range(0, num_nodes)]    # list of all nodes
 
     ##################################################################################################################################
     # EXAMPLE ARRAYS THAT WERE USED FOR TESTING PURPOSES
-
 
     # Going to create an test network for building this function based on steve boyles textbox
     # G = nx.DiGraph()
@@ -1671,7 +1675,6 @@ def traffic_assignment(G='',
     # sum_d = 10
 
     # This is another network example specifically for bush-based algorithms FROM NOTES
-    # #FIXME - sample data for testing
     # G = nx.DiGraph()
     # G.add_nodes_from([0,1,2,3,4,5,6,7,8,9])
     # G.add_edges_from([(1,2),(1,4),(2,3),(2,5),(3,6),(4,5),(4,7),(5,6),(5,8),(6,9),(7,8),(8,9)])
@@ -1694,15 +1697,13 @@ def traffic_assignment(G='',
 
 
     # WRITE FUNCTIONS FOR CALCULATING BPR FUNCTIONS FOR WEIGHT ARRAY AND WEIGHT ARRAY DERIVATIVE
-    # I think for now it would be easiest to assume that every road has the same equation?
     # weight_array variable should remain the free flow time array
         # weight_array_itter (or weight_array_iter, need to fix spelling for different algorithms) will be the changing weight array with each iteration
 
     # LINK PERFORMANCE HELPER FUNCTIONS 
-    # FIXME: new helper functions go here
     # So far, only link_performance_function and link_performance derivative require equation inputs 
 
-    def link_performance_function(capacity_array,flow_array,weight_array,eq=link_performance,alpha_array=0,beta_array=0):
+    def link_performance_function(capacity_array,flow_array,weight_array,eq=link_performance,alpha_array=0.15,beta_array=4):
         """ Function returning the weight_array_iter array based on user selected equation
         
         Universival arguments:
@@ -1711,7 +1712,6 @@ def traffic_assignment(G='',
             weight_array   == node-node array of free-flow weights (i.e., zero flow travel time)
 
         BPR arguments:
-            TODO: right now I am not sure if array of values will work, need to double check
             alpha_array == either node-node array of alpha values for each link OR single value 
             beta_array  == either node-node array of beta values for each link OR single value     
 
@@ -1726,7 +1726,7 @@ def traffic_assignment(G='',
         return weight_array_iter
 
 
-    def link_performance_derivative(capacity_array, flow_array, weight_array, eq=link_performance, alpha_array=0, beta_array=0):
+    def link_performance_derivative(capacity_array, flow_array, weight_array, eq=link_performance, alpha_array=0.15, beta_array=4):
         """ Function returning the derivative array based on user selected equation
         
         Universival arguments:
@@ -1735,7 +1735,6 @@ def traffic_assignment(G='',
             weight_array   == node-node array of free-flow weights (i.e., zero flow travel time)
 
         BPR arguments:
-            TODO: right now I am not sure if array of values will work, need to double check
             alpha_array == either node-node array of alpha values for each link OR single value 
             beta_array  == either node-node array of beta values for each link OR single value     
 
@@ -1750,7 +1749,7 @@ def traffic_assignment(G='',
         return link_performance_derivative
 
 
-    def bisection_zeta(lambda_val, flow_array_star, capacity_array, flow_array, weight_array, eq=link_performance, alpha_array=0, beta_array=0):
+    def bisection_zeta(lambda_val, flow_array_star, capacity_array, flow_array, weight_array, eq=link_performance, alpha_array=0.15, beta_array=4):
         """ Function returning the zeta value when using the bisection link-based method
         
         Universival arguments:
@@ -1761,7 +1760,6 @@ def traffic_assignment(G='',
             weight_array    == node-node array of free-flow weights (i.e., zero flow travel time)
 
         BPR arguments:
-            TODO: right now I am not sure if array of values will work, need to double check
             alpha_array == either node-node array of alpha values for each link OR single value 
             beta_array  == either node-node array of beta values for each link OR single value     
 
@@ -1781,7 +1779,7 @@ def traffic_assignment(G='',
         return(zeta)
         
 
-    def newton_f(lambda_val, flow_array_star, capacity_array, flow_array, weight_array, eq=link_performance, alpha_array=0, beta_array=0):
+    def newton_f(lambda_val, flow_array_star, capacity_array, flow_array, weight_array, eq=link_performance, alpha_array=0.15, beta_array=4):
         """ Function returning the f and f_prime values when using the newton's and CFW link-based methods
         
         Universival arguments:
@@ -1792,7 +1790,6 @@ def traffic_assignment(G='',
             weight_array    == node-node array of free-flow weights (i.e., zero flow travel time)
 
         BPR arguments:
-            TODO: right now I am not sure if array of values will work, need to double check
             alpha_array == either node-node array of alpha values for each link OR single value 
             beta_array  == either node-node array of beta values for each link OR single value     
 
@@ -1820,7 +1817,7 @@ def traffic_assignment(G='',
         return f, f_prime
 
 
-    def cfw_alpha(flow_array_star_old, flow_array_star, capacity_array, flow_array, weight_array, eq=link_performance, alpha_array=0, beta_array=0):
+    def cfw_alpha(flow_array_star_old, flow_array_star, capacity_array, flow_array, weight_array, eq=link_performance, alpha_array=0.15, beta_array=4):
         """ Function returning the numerator and denominator of alpha value for CFW link-based method
 
         Universival arguments:
@@ -1831,7 +1828,6 @@ def traffic_assignment(G='',
             weight_array        == node-node array of free-flow weights (i.e., zero flow travel time)
 
         BPR arguments:
-            TODO: right now I am not sure if array of values will work, need to double check
             alpha_array == either node-node array of alpha values for each link OR single value 
             beta_array  == either node-node array of beta values for each link OR single value     
 
@@ -1854,6 +1850,7 @@ def traffic_assignment(G='',
         num = np.sum(deriv*item1*item2)
         den = np.sum(deriv*item1*item3)
         return num, den
+
 
     def topo_order_function(bush, origin, weight_array, num_nodes = num_nodes, node_list=node_list):
         """Function to calculate topographic order on a bush."""
@@ -1900,8 +1897,29 @@ def traffic_assignment(G='',
         topo_order = topo_order[::-1]
         return topo_order
 
+
+    def termination_function(termination_criteria, iters, AEC, RG):
+        """Function to determine if algorithm loop should continue or not.
+        The input terminatio_criteria is a list with a string and numerical value. Once numerical value is reached, the loop should stop.
+        """
+        val=True
+        if termination_criteria[0] == 'iter':
+            if iters >= termination_criteria[1]:
+                val=False
+
+        if termination_criteria[0] == 'AEC':
+            if AEC <= termination_criteria[1]:
+                val=False
+
+        if termination_criteria[0] == 'RG':
+            if RG <= termination_criteria[1]:
+                val=False
+
+        return val
+
+
+
     # ALGORITHMS
-    # LINK-BASED ALGORITHM
     if algorithm == "link_based":
 
         # INITIALIZE LINK BASED ALGORITHM
@@ -1927,14 +1945,6 @@ def traffic_assignment(G='',
             for i in range(len(path)-1):
                 flow_array[path[i]][path[i+1]] += flow
 
-
-
-        # TERMINATION CRITERIA
-        # Could do # of iterations, or AEC <= a value, or RG <= value
-        # TODO: Fix termination criteria loop
-        iterations = 5
-        iter=0
-
         # LINK BASED ALGORITHM: Within loop:
         # 1.    Recalculate weight_array (travel cost times) using BPR function and initial flow_array
         # 2.    Create empty kappa array to hold OD shortest path costs, and empty flow_array_star to hold new flows
@@ -1952,20 +1962,19 @@ def traffic_assignment(G='',
 
         # CFW marker -> CFW algorithm has different 1st iteration, use this marker to get around 
         CFW_marker = 0
-
-        while iter <= iterations:
+        # set iter values
+        iter=0
+        iter_val = True
+        # begin loop
+        while iter_val is True:
             # 1. recalculate weight_array
-            # FIXME: REPLACED EQUATION WRITTEN: Replace with BPR function
             weight_array_iter = link_performance_function(capacity_array=capacity_array,
                                                             flow_array=flow_array,
                                                           weight_array=weight_array,
                                                             eq=link_performance,
                                                             alpha_array=alpha_array,
                                                           beta_array=beta_array)
-            ## DELETE BELOW
-            # weight_array_iter = flow_array/100 +10         # Example network BPR
-            ## weight_array_iter = weight_array*(1+alpha_array*(flow_array/capacity_array)**beta_array)      # Real network BPR
-            ## DELETE ABOVE
+
             # 2. Create empty kappa array and flow_array_star
             kappa=np.zeros([1,np.shape(OD_matrix)[0]])
             flow_array_star = np.zeros_like(capacity_array)
@@ -2012,7 +2021,6 @@ def traffic_assignment(G='',
                     # find bisection of lo and hi values
                     lambda_val = (lambda_hi-lambda_lo)/2 + lambda_lo
                     # Calculate x_hat, and subsequently zeta
-                    # FIXME: REPLACED EQUATION WRITTEN: Check BPR math below and remove above
                     zeta = bisection_zeta(lambda_val = lambda_val, 
                                             flow_array_star=flow_array_star, 
                                              capacity_array=capacity_array, 
@@ -2020,13 +2028,7 @@ def traffic_assignment(G='',
                                             weight_array=weight_array,
                                             eq=link_performance, 
                                             alpha_array=alpha_array, 
-                                          beta_array=beta_array)
-
-                    ## DELETE BELOW
-                    # x_hat = lambda_val*flow_array_star+(1-lambda_val)*flow_array
-                    # zeta = np.sum((x_hat/100 + 10)*(flow_array_star-flow_array))   # Example network BPR                  
-                    ## zeta = np.sum(((((lambda_val*flow_array_star+(1-lambda_val)*flow_array)/capacity_array)**beta_array*alpha_array+1)*weight_array)*(flow_array_star-flow_array)) 
-                    ## DELETE ABOVE
+                                            beta_array=beta_array)
 
                     # determine shift
                     if zeta > 0:
@@ -2043,10 +2045,9 @@ def traffic_assignment(G='',
                 # Frank-Wolfe: Newton's Method
                 # initialize lambda - just going to choose 0.5
                 lambda_val = 0.5
-                # calculate x_hat
-                x_hat = lambda_val*flow_array_star + (1-lambda_val)*flow_array
+                # # calculate x_hat
+                # x_hat = lambda_val*flow_array_star + (1-lambda_val)*flow_array
                 # calculate f and f_prime
-                # FIXME: REPLACED EQUATION WRITTEN: Program more complex BPR function
                 f, f_prime = newton_f(lambda_val=lambda_val, 
                                         flow_array_star=flow_array_star, 
                                         capacity_array=capacity_array, 
@@ -2055,10 +2056,7 @@ def traffic_assignment(G='',
                                         eq=link_performance, 
                                         alpha_array=alpha_array, 
                                       beta_array=beta_array)
-                ## DELETE BELOW
-                #f = np.sum((x_hat/100 + 10)*(flow_array_star-flow_array))  #  example network BPR
-                #f_prime = np.sum((1/100)*(flow_array_star-flow_array)**2)      # example network BPR
-                ## DELETE ABOVE
+
 
                 # Update Lambda
                 lambda_val -= f/f_prime
@@ -2073,14 +2071,9 @@ def traffic_assignment(G='',
                 # REFER TO PAGE 177 in BOYLES TEXTBOOT
                 # first iteration: use Newton's method only
                 # subsequent interations, determine new x*star based on alpha calcuation 
-                # TODO: add functionality for real BPR function
                 epsilon=0.01
                 if CFW_marker > 0:
                     # solve for alpha, eq (6.3) in boyles textbook, page 176
-                    item1 = flow_array_star_old - flow_array
-                    item2 = flow_array_star - flow_array
-                    item3 = flow_array_star - flow_array_star_old
-                    # FIXME : REPLACED EQUATION WRITTEN: BPR function
                     num, den = cfw_alpha(flow_array_star_old=flow_array_star_old, 
                                             flow_array_star=flow_array_star, 
                                             capacity_array=capacity_array, 
@@ -2089,10 +2082,7 @@ def traffic_assignment(G='',
                                             eq=link_performance, 
                                             alpha_array=alpha_array, 
                                             beta_array=beta_array)
-                    ## DELETE BELOW
-                    #num = np.sum((1/100)*item1*item2)
-                    #den = np.sum((1/100)*item1*item3)
-                    ## DELETE ABOVE
+
                     if den == 0:
                         alpha=0
                     else:
@@ -2106,9 +2096,6 @@ def traffic_assignment(G='',
                 # Calculate Lambda using new flow_array_star estimation utilizing Newton's Method
                 # initialize lambda - just going to choose 0.5
                 lambda_val = 0.5
-                # calculate x_hat
-                x_hat = lambda_val*flow_array_star + (1-lambda_val)*flow_array
-                # FIXME: REPLACED EQUATION WRITTEN: Program more complex BPR function (SEE ABOVE EQUATIONS)
                 # calculate f and f_prime
                 f, f_prime = newton_f(lambda_val, 
                                         flow_array_star=flow_array_star, 
@@ -2118,13 +2105,6 @@ def traffic_assignment(G='',
                                         eq=link_performance, 
                                         alpha_array=alpha_array, 
                                         beta_array=beta_array)
-
-                ## DELETE BELOW
-                ## example network BPR
-                #f = np.sum((x_hat/100 + 10)*(flow_array_star-flow_array))
-                ## example network BPR
-                #f_prime = np.sum((1/100)*(flow_array_star-flow_array)**2)
-                ## DELETE ABOVE
 
                 # Update Lambda
                 lambda_val -= f/f_prime
@@ -2146,8 +2126,13 @@ def traffic_assignment(G='',
             TSTT_list.append(TSTT)
             SPTT_list.append(SPTT)
             RG_list.append(RG)
-            print(RG)
-            iter +=1 
+            iter += 1
+
+            # determine if iterations should continue
+            iter_val = termination_function(termination_criteria=termination_criteria, 
+                                            iters = iter, 
+                                            AEC=AEC, 
+                                            RG=RG)
 
     
     elif algorithm == 'path_based':
@@ -2176,7 +2161,6 @@ def traffic_assignment(G='',
             flow = OD_pair[1]
             destination = OD_pair[2].astype(int)
             # Calculate shortest path for OD pair
-            # BUG : impelement this everywhere - I think its the adj matrix more than heap but reduced calc time of this section from 7.3 to 0.9  sec
             backnode, costlabel = shortestPath_heap(origin=origin, 
                                                     capacity_array=capacity_array, 
                                                     weight_array=weight_array, 
@@ -2221,10 +2205,18 @@ def traffic_assignment(G='',
         AEC = (TSTT-SPTT)/sum_d
         RG = TSTT/SPTT - 1
 
-        # begin iterations
-        iter=0
-        start = time.process_time()
-        while iter <= 15:
+        # append the termination criteria lists
+        AEC_list.append(AEC)
+        TSTT_list.append(TSTT)
+        SPTT_list.append(SPTT)
+        RG_list.append(RG)
+
+        # set iter values
+        iter = 0
+        iter_val = True
+        # begin loop
+        while iter_val is True:
+
             for OD_pair in paths_array:
                 origin = OD_pair[0][0]
                 destination = OD_pair[0][1]
@@ -2324,22 +2316,35 @@ def traffic_assignment(G='',
             TSTT = np.sum(np.multiply(flow_array, weight_array_iter))
             AEC = (TSTT-SPTT)/sum_d
             RG = TSTT/SPTT - 1
-            print(RG)
-                        
-            iter+=1
+
+            # Fill termination variable lists
+            AEC_list.append(AEC)
+            TSTT_list.append(TSTT)
+            SPTT_list.append(SPTT)
+            RG_list.append(RG)
+            iter += 1
+
+            # determine if iterations should continue
+            iter_val = termination_function(termination_criteria=termination_criteria, 
+                                            iters = iter, 
+                                            AEC=AEC,
+                                            RG=RG)
 
 
     elif algorithm == 'bush_based':
         
  
-
         # Convert network into a set of bushes for each OD pair
         #topo_orders = []
         bushes = []
         bush_flows = [] 
 
+        # Termination criteria variables I am interested in keeping track off:
+        AEC_list = []
+        TSTT_list = []
+        SPTT_list = []
+        RG_list = []
 
-        print('creating bushes')
         for pair in OD_matrix:
             origin = pair[0].astype(int) 
             flow = pair[1]
@@ -2359,7 +2364,6 @@ def traffic_assignment(G='',
                     # I think J and I are placed properly?
                     bush[j][i]=1
 
- 
             # Set initial flow for each bush - flow along shortest path
             bush_flow = np.zeros_like(weight_array)
             backnode, costlabel = shortestPath(origin, bush, weight_array)
@@ -2388,8 +2392,6 @@ def traffic_assignment(G='',
                                                         eq=link_performance,
                                                         alpha_array=alpha_array,
                                                         beta_array=beta_array)
-
-
 
         def label_function(topo_order, bush, weight_array_itter):
             '''function to calculate all of the L and U labels for algorithm B'''
@@ -2460,21 +2462,21 @@ def traffic_assignment(G='',
             return L_node, U_node, L_link, U_link
 
 
-
         # Begin the loops of, for each bush,:
             # 1. find if shortcuts exist (i.e., find new shortest path from O-D, if it uses links not on bush, add them)
                 # 1a. find shortest path
                 # 1b. add shortcuts to bush
             # 2. Calculate L and U labels in forward topological order
-            # BUG: I really think the issue is that the longest path isn't the path we are calculating with initial flow due to adding all shortcuts
             # 3. conduct divergence node determination loop to shift flows using Newton's method
             # 4. After all Newton's adjustments for this bush, calculate new network flow and adjust travel times
             # repeat for each bush
 
+        # set iter values
+        iter = 0
+        iter_val = True
+        # begin loop
+        while iter_val is True:
 
-        print('beginning iterations')
-        iter=0
-        while iter <= 0:
             #print('#######################################################################################')
             for idx, bush in enumerate(bushes):
                 print(idx)
@@ -2488,26 +2490,15 @@ def traffic_assignment(G='',
                 # conduct topological ordering from the origin node
                 topo_order = topo_order_function(bush, origin=origin, weight_array=weight_array_itter, num_nodes=num_nodes, node_list=node_list)
 
-
                 # calculate initial L and U labels
                 L_node, U_node, L_link, U_link = label_function(topo_order, 
                                                                     bush, 
                                                                     weight_array_itter)
-               
-
-                # backnode, costlabel = shortestPath(origin, capacity_array, weight_array_itter)
-                # path_mod, cost_mod = pathTo_mod(backnode, costlabel, origin, destination)
-                # for x in path_mod:
-                #     if bush[x[0]][x[1]] != 1:
-                #         bush[x[0]][x[1]] = 1
-                #         # BUG - this creates loops in certain instances
-                            # I also just can't make a new bush because then min and max path will be the same I have to be adding edges
-                #         bush[x[1]][x[0]]=-1
-                #         print(f'shortcut added {x[0], x[1]}')
-
 
                 # 1. FIND SHORTCUTS AND ADD TO BUSH
                 # I don't like adding every possible shortcut - this doesn't seem efficent to me
+                # BUG : furthermore, I am not positive but I believe this can inadvertently add a loop, thus invalidating the topo_order function later 
+                #       THIS NEEDS TO BE ADDRESSED
                 # from textbook and slides, proper way is to add any link where Ui + tij < Uj # BUG L or U??? POWERPOINT AND BOOK SAY OPPOSITE
                 for i in topo_order:
                     for j in topo_order:
@@ -2524,7 +2515,6 @@ def traffic_assignment(G='',
 
                 # instead of being interested in last node topoligcally, maybe we are interested in destination node?
                 # BUG: this is helping calculate delta_hs but it really is supposed to be last node topologically from notes
-                # ERROR WITH THIS: some reason it is removing nodes that we need, even though topological order should be prserved
                 topo_order=topo_order[:topo_order.index(num_nodes-1)+1]
 
                 # DIVERGENCE NODE LOOP
@@ -2586,21 +2576,16 @@ def traffic_assignment(G='',
                                 min_path.append(next_node_holder)
                                 next_node_min = next_node_holder
                         
-
                             backnode, costlabel = shortestPath(origin, bush, weight_array_itter)
                             path_mod, cost_mod = pathTo_mod(backnode, costlabel, origin, destination)
-                            print(path_mod)
 
                             # reverse order of lists for better comprehension
                             min_path = min_path[::-1]
                             max_path = max_path[::-1]
 
-                            print(max_path)
-                            print(min_path)
 
                             # if max and min path are the same, there is only one path and therefore we do not need to shift flow
                             if min_path == max_path:
-                                print('same path')
                                 loop=False
 
                             # determine divergence node "a" from min and max paths
@@ -2656,7 +2641,6 @@ def traffic_assignment(G='',
                                         pass
                                     else:
                                         delta_h = bush_flow[sigma_U[id]][sigma_U[id+1]]
-                                print(f'delta_h {delta_h}')
                                 
                                 # Shift flows
                                 for id in range(len(sigma_L)-1):
@@ -2668,8 +2652,6 @@ def traffic_assignment(G='',
 
                                 # at end of loop, slice off last value and repeat
                                 topo_order = topo_order[:-1]
-                    
-            
                     
                 # update the weight array
                 weight_array_itter = link_performance_function(capacity_array,flow_array,weight_array,eq=link_performance,alpha_array=alpha_array,beta_array=beta_array)
@@ -2691,8 +2673,7 @@ def traffic_assignment(G='',
                 #                 pass
                 #             else:
                 #                 bush[i][j] = 1
-
-
+        
             # calculate termination criteria
             SPTT = 0
             for idx, x in enumerate(OD_matrix):
@@ -2711,12 +2692,22 @@ def traffic_assignment(G='',
             TSTT = np.sum(np.multiply(flow_array, weight_array_itter))
             AEC = (TSTT-SPTT)/sum_d
             RG = TSTT/SPTT - 1
-            print(f'RG  {RG}')
 
-            iter +=1
+            # Fill termination variable lists
+            AEC_list.append(AEC)
+            TSTT_list.append(TSTT)
+            SPTT_list.append(SPTT)
+            RG_list.append(RG)
+            iter += 1
+
+            # determine if iterations should continue
+            iter_val = termination_function(termination_criteria=termination_criteria,
+                                            iters=iter,
+                                            AEC=AEC,
+                                            RG=RG)
 
 
-
+    # EDIT THE FINAL OUTPUTS
     # relate flow array back to network
     new_data= {}
     for i in node_list:
@@ -2734,10 +2725,9 @@ def traffic_assignment(G='',
     #TODO:  has to be multidigraph to save properly should adjust save function to represent this requirement
     G_output = nx.MultiDiGraph(G)
 
-    #TODO: Fix outputs - either add save option or remove and keep as seperate function - in scratch. This function should return the graph
-    save_2_disk(G=G_output, path='/home/mdp0023/Documents/Codes_Projects/network_analysis/Network_Testing_Data',
-                name='AOI_Graph_Traffic_Assignment')
+    # #TODO: Fix outputs - either add save option or remove and keep as seperate function - in scratch. This function should return the graph
+    # save_2_disk(G=G_output, path='/home/mdp0023/Documents/Codes_Projects/network_analysis/Network_Testing_Data',
+    #             name='AOI_Graph_Traffic_Assignment')
 
-
-    test='output'
-    return test
+    
+    return G_output, AEC_list, TSTT_list, SPTT_list, RG_list, iter
