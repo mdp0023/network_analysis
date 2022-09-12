@@ -125,10 +125,7 @@ def shape_2_graph(source=''):
     For example, if the AOI is a block group, residents might require driving outside bounadry to get to areas within
     and excluding roadnetworks, espcially those that border the AOI, can lead to errors.
 
-    .. TODO::
-
-        Only potential improvement is to include function to add a buffer to AOI instead of requiring that the user automatically do this,
-        but this is not the most meaningful improvement
+    Only potential improvement is to include function to add a buffer to AOI instead of requiring that the user automatically do this, but this is not the most meaningful improvement
 
 
     :param source: Path to .shp file of the area of interest
@@ -161,7 +158,6 @@ def save_2_disk(G='', path='', name='AOI_Graph'):
     :type path: str
     :param name: Name the graph will be saved as. *Default='AOI_Graph*
     :type name: str
-    
 
     '''
     ox.io.save_graphml(G, f'{path}/{name}')
@@ -243,7 +239,6 @@ def parallel_edges(G=''):
     :returns: 
         - **Bool**, *True* if parallel edges exist, otherwise *False*
         - **parallel_edges**, list of parallel edges, *[[u,v,num_edges],...]*
-
     :rtype: tuple
 
     '''
@@ -295,7 +290,6 @@ def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
         - **res_points**, *geopandas.GeoDataFrame*, residential points with appended attribute of 'nearest_node'
         - **dest_points**, *geopandas.GeoDataFrame*, destination/sink points with appended attribute of 'nearest_node'
     :rtype: tuple
-
 
     '''
 
@@ -478,7 +472,6 @@ def min_cost_flow_parcels(G='', res_points='', dest_points='', G_demand='demand'
     :rtype: tuple
     :Raises: nx.NetworkXUnfeasible if all demand cannot be satisfied, i.e., all residential parcels cannot reach the resource.
 
-
     ''' 
     # Travel times must be whole numbers -  round values if not whole numbers
     for x in G.edges:
@@ -623,7 +616,7 @@ def plot_aoi(G='', res_parcels='',
     :type insets: list of strings
     :param save_loc: Location to save figure (*Default=None*).
     :type save_loc: string
-    param raster: raster of inundation extent
+    :param raster: raster of inundation extent
     :type raster: .tif rile, use rasterio.open()
 
     :return: **fig**, the produced figure
@@ -864,7 +857,6 @@ def inundate_network(G='', CRS=32614, path='', inundation=''):
     :type path: string
     :param inundation: File path to inundation raster .tif
     :type inundation: string
-    
 
     :return: **inundated_G**, the impacted graph network.
     :rtype: networkx.Graph [Multi, MultiDi, Di]
@@ -1209,6 +1201,7 @@ def shortestPath(origin, capacity_array, weight_array):
     This method finds the shortest path from origin to all other nodes
     in the network.  
     Algorithm utilized is Dijkstra's.s
+
     """
     # Need the number of nodes for calculations
     numnodes = np.shape(capacity_array)[0]
@@ -1272,6 +1265,7 @@ def shortestPath_heap(origin, capacity_array, weight_array, adjlist):
     Uses a binary heap priority que in an attempt to speed up the shortestPath function.
     Shortest path algorithm utilized is Dijkstra's.
     going to use built in function in python called heapq
+
     """
 
     # Need the number of nodes for calculations
@@ -1346,7 +1340,9 @@ def pathTo(backnode, costlabel, origin, destination):
 
 
 def pathTo_mod(backnode, costlabel, origin, destination):
-    """test pathTo function to output node-node pairs instead of list of nodes to avoid having to do loops elsewhere"""
+    """test pathTo function to output node-node pairs instead of list of nodes to avoid having to do loops elsewhere
+    
+    """
     cost = costlabel[destination]
     path = []
     nxt1=[]
@@ -1387,6 +1383,7 @@ def maxFlow(source, sink, numnodes, capacity_array, weight_array):
     in a list-of-lists (which takes the same form as the adjacency matrix).
     These are already created for you at the start of the method, fill them
     in with your implementation of minimum cost flow.
+
     """
 
     # Set up network flows matrix; flow[i][j] should have the
@@ -1537,8 +1534,6 @@ def traffic_assignment(G,
         - **RG_list**, list of relative gap, RG, values for each iteration
         - **iter**, number of iterations completed
     :rtype: tuple
-
-    
 
     """
 

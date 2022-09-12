@@ -7,29 +7,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Usage &#8212; Network Exploration 0.1 documentation</title>
     <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
-    <link rel="stylesheet" type="text/css" href="_static/alabaster.css" />
+    <link rel="stylesheet" type="text/css" href="_static/classic.css" />
+    
     <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
     <script src="_static/jquery.js"></script>
     <script src="_static/underscore.js"></script>
     <script src="_static/doctools.js"></script>
+    
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="TODO" href="TODO.html" />
-    <link rel="prev" title="Welcome to Network Exploration’s documentation!" href="index.html" />
-   
-  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
-  
-  
-  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
-
+    <link rel="next" title="API" href="API.html" />
+    <link rel="prev" title="Welcome to Network Exploration’s documentation!" href="index.html" /> 
   </head><body>
-  
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="API.html" title="API"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="index.html" title="Welcome to Network Exploration’s documentation!"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">Network Exploration 0.1 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Usage</a></li> 
+      </ul>
+    </div>  
 
     <div class="document">
       <div class="documentwrapper">
         <div class="bodywrapper">
-          
-
           <div class="body" role="main">
             
   <div class="section" id="usage">
@@ -54,11 +66,7 @@ which are necessary components in further calculations.</p>
 <p>Ensure that the shapefile area has a sufficent buffer to capture enough of the road network.
 For example, if the AOI is a block group, residents might require driving outside bounadry to get to areas within
 and excluding roadnetworks, espcially those that border the AOI, can lead to errors.</p>
-<div class="admonition-todo admonition" id="id1">
-<p class="admonition-title">Todo</p>
-<p>Only potential improvement is to include function to add a buffer to AOI instead of requiring that the user automatically do this,
-but this is not the most meaningful improvement</p>
-</div>
+<p>Only potential improvement is to include function to add a buffer to AOI instead of requiring that the user automatically do this, but this is not the most meaningful improvement</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><p><strong>source</strong> (<em>str</em>) – Path to .shp file of the area of interest</p>
@@ -297,7 +305,7 @@ of households.</p>
 </div>
 <dl class="py function">
 <dt class="sig sig-object py" id="network_exploration_stuff.plot_aoi">
-<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">plot_aoi</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">res_parcels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">resource_parcels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">edge_width</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loss_access_parcels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scalebar</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inundation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">insets</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_loc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.plot_aoi" title="Permalink to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">plot_aoi</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">res_parcels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">resource_parcels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">edge_width</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bbox</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loss_access_parcels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scalebar</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inundation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">insets</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_loc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raster</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.plot_aoi" title="Permalink to this definition">¶</a></dt>
 <dd><p>Create a plot with commonly used features.</p>
 <p>This function has a variety of parameters to create quick figures that I commonly look at. This can be actively changed to add more/less features.
 <strong>Returns final figure, use plt.show() to see plot.</strong></p>
@@ -314,6 +322,7 @@ of households.</p>
 <li><p><strong>inundation</strong> – Raster of inundation to plot over figure. Use rasterio.open</p></li>
 <li><p><strong>insets</strong> (<em>list of strings</em>) – File locations of areas to create inset box outlines (<em>Default=None</em>).</p></li>
 <li><p><strong>save_loc</strong> (<em>string</em>) – Location to save figure (<em>Default=None</em>).</p></li>
+<li><p><strong>raster</strong> (<em>.tif rile</em><em>, </em><em>use rasterio.open</em><em>(</em><em>)</em>) – raster of inundation extent</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
@@ -471,46 +480,113 @@ to be addressed include:</p>
 </dl>
 </dd></dl>
 
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+<dl class="py function">
+<dt class="sig sig-object py" id="network_exploration_stuff.traffic_assignment">
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">traffic_assignment</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">res_points</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dest_points</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_capacity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'capacity'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'travel_time'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'path_based'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'CFW'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">link_performance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'BPR'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">termination_criteria</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['iter',</span> <span class="pre">0]</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.traffic_assignment" title="Permalink to this definition">¶</a></dt>
+<dd><p>Solves the static traffic assignment problem based using algorithms and termination criteria from user inputs.</p>
+<p>Taking in a network of roads, shapefile of residential points, and shapefile of destination points, all residential parcels are snapped to the nearest intesection and routed to the nearest destination (also snapped to nearest intersection). Each link has a theoretical capacity (G_capacity argument) and free flow travel time (G_weight argument) associated with it that are used as inputs into the link performance function (link_performance argument). Currently, only one link performance function is available, the user equilibrium BPR function (Bureau of Public Roads function). Other functions will be added in the future.</p>
+<p>Furthermore, the user can define the type of algorithm (algorithm argument) as either link_based, path_based, or bush_based. Currently for link_based arguments only, there are multiple methods that could be used including: MSA (method of successive averages), Bisection, Newton’s Method, and CFW (Conjugate Franke-Wolfe).</p>
+<p>The termination criteria (termination_criteria argument) is a list of length two, with the first argument identifying the type of criteria (e.g., the number of iterations, the relative gap value, etc.) and the second argument being the value to compare the criteria to.</p>
+<dl>
+<dt>To summarize the algorithms and methods currently avaialble:</dt><dd><ul class="simple">
+<li><dl class="simple">
+<dt>Link Based</dt><dd><ul>
+<li><p>Method of Successive Averages (MSA)</p></li>
+<li><p>Bisection</p></li>
+<li><p>Newton’s Method</p></li>
+<li><p>Conjugate Frank-Wolfe (CFW)</p></li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt>Path Based</dt><dd><ul>
+<li><p>Gradient Projection</p></li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+<dl class="simple">
+<dt>-Bush Based </dt><dd><ul class="simple">
+<li><p>Algorithm B</p></li>
+</ul>
+</dd>
+</dl>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>G</strong> (<em>networkx.Graph</em><em> [</em><em>Multi</em><em>, </em><em>MultiDi</em><em>, </em><em>Di</em><em>]</em>) – The graph network</p></li>
+<li><p><strong>res_points</strong> (<em>geopandas Geodataframe</em>) – Location of the residential parcel points</p></li>
+<li><p><strong>dest_points</strong> (<em>geopandas Geodataframe</em>) – Location of the destination parcel points</p></li>
+<li><p><strong>G_capacity</strong> (<em>string</em>) – Attribute of G that is theoretical road link capacity</p></li>
+<li><p><strong>G_weight</strong> (<em>string</em>) – Attribute of G that is free flow travel time across link</p></li>
+<li><p><strong>algorithm</strong> (<em>string</em>) – Algorithm to be used to solve traffic assignment. Can be link_based, path_based, or bush_based</p></li>
+<li><p><strong>method</strong> (<em>string</em>) – Method of algorithm to be used. Currenlty only applies to link_based, with options of MSA, Bisection, Newton’s Method, or CFW</p></li>
+<li><p><strong>link_performance</strong> (<em>string</em>) – The link performance function to solve. Currenlty only BPR is available (user equilrium BPR to be specific)</p></li>
+<li><p><strong>termination_criteria</strong> (<em>list</em><em>, </em><em>first element string and second element number</em>) – The criteria type and comparision number to stop iterations. Available criteria include AEC, iters, and RG</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>G_output</strong>, nx.Multigraph of road network with traffic assignment flow attribute, ‘TA_Flow’</p></li>
+<li><p><strong>AEC_list</strong>, list of average access cost, AEC, values for each iteration</p></li>
+<li><p><strong>TSTT_list</strong>, list of total system travel times, TSTT, values for each iteration</p></li>
+<li><p><strong>SPTT_list</strong>, list of shortest path travel times, SPTT, values for each iteration</p></li>
+<li><p><strong>RG_list</strong>, list of relative gap, RG, values for each iteration</p></li>
+<li><p><strong>iter</strong>, number of iterations completed</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
 </div>
 </div>
 
 
+            <div class="clearer"></div>
           </div>
-          
         </div>
       </div>
       <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
         <div class="sphinxsidebarwrapper">
-<h1 class="logo"><a href="index.html">Network Exploration</a></h1>
-
-
-
-
-
-
-
-
-<h3>Navigation</h3>
-<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Usage</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#package-import">Package import</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#available-functions">Available Functions</a></li>
+  <div>
+    <h3><a href="index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">Usage</a><ul>
+<li><a class="reference internal" href="#package-import">Package import</a></li>
+<li><a class="reference internal" href="#available-functions">Available Functions</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="TODO.html">TODO</a></li>
-<li class="toctree-l1"><a class="reference internal" href="API.html">API</a></li>
 </ul>
 
-<div class="relations">
-<h3>Related Topics</h3>
-<ul>
-  <li><a href="index.html">Documentation overview</a><ul>
-      <li>Previous: <a href="index.html" title="previous chapter">Welcome to Network Exploration’s documentation!</a></li>
-      <li>Next: <a href="TODO.html" title="next chapter">TODO</a></li>
-  </ul></li>
-</ul>
-</div>
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="index.html"
+                          title="previous chapter">Welcome to Network Exploration’s documentation!</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="API.html"
+                          title="next chapter">API</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/usage.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
 <div id="searchbox" style="display: none" role="search">
   <h3 id="searchlabel">Quick search</h3>
     <div class="searchformwrapper">
@@ -521,32 +597,32 @@ to be addressed include:</p>
     </div>
 </div>
 <script>$('#searchbox').show(0);</script>
-
-
-
-
-
-
-
-
         </div>
       </div>
       <div class="clearer"></div>
     </div>
-    <div class="footer">
-      &copy;2022, Matthew Preisser.
-      
-      |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 4.5.0</a>
-      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
-      
-      |
-      <a href="_sources/usage.rst.txt"
-          rel="nofollow">Page source</a>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="API.html" title="API"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="index.html" title="Welcome to Network Exploration’s documentation!"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">Network Exploration 0.1 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Usage</a></li> 
+      </ul>
     </div>
-
-    
-
-    
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2022, Matthew Preisser.
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 4.5.0.
+    </div>
   </body>
 </html>

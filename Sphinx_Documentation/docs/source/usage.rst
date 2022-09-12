@@ -68,6 +68,11 @@ Available Functions
 
 .. autofunction:: network_exploration_stuff.flow_decomposition
 
+|
+
+.. autofunction:: network_exploration_stuff.traffic_assignment
+
+    
 
 
 
