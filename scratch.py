@@ -17,40 +17,39 @@ logging.captureWarnings(True)
 # don't truncate output of numpy array
 np.set_printoptions(threshold=sys.maxsize)
 
+
+# AOI VARIABLES
+# Folder path
+folder_path = '/home/mdp0023/Documents/Codes_Projects/network_analysis/Network_Testing_Data/AOI_Testing'
+# bounadry
+aoi_area = f'{folder_path}/AOI_Boundary/Neighborhood_Network_AOI.shp'
+# boundary with buffer 
+aoi_buffer = f'{folder_path}/AOI_Boundary/Neighborhood_Network_AOI_Buf_1km.shp'
+# Centroids of res parcels and food marts
+res_points_loc = f'{folder_path}/AOI_Residental_Parcel_Shapefiles/Residential_Parcels_Points_Network_AOI.shp'
+food_points_loc = f'{folder_path}/AOI_Food_Marts_Shapefiles/Food_Marts_Points_Network_AOI.shp'
+# Shapefiles of res parcels and food marts
+res_parcels = f'{folder_path}/AOI_Residental_Parcel_Shapefiles/Residential_Parcels_Network_AOI.shp'
+food_parcels = f'{folder_path}/AOI_Food_Marts_Shapefiles/Food_Marts_Network_AOI.shp'
+inundation_raster = f'{folder_path}/AOI_Inundation.tif'
+raster = rio.open(inundation_raster)
+
 # VARIABLES USED #############################################################
-# file path
-path = "/home/mdp0023/Documents/Codes_Projects/\
-network_analysis/Network_Testing_Data"
-image_path = "/home/mdp0023/Documents/Codes_Projects/\
-network_analysis/Poster_Graphics"
-inset_path = "/home/mdp0023/Documents/Codes_Projects/network_analysis/bboxes"
-# AOI without buffer
-aoi_area = f'{path}/Neighborhood_Network_AOI.shp'
-# AOI with buffer
-aoi_buffer = f'{path}/Neighborhood_Network_AOI_Buf_1km.shp'
-# centroids of res parcels and food marts
-res_points_loc = f'{path}/Residential_Parcels_Points_Network_AOI.shp'
-food_points_loc = f'{path}/Food_Marts_Points_Network_AOI.shp'
-# shapefiles of res parcels and food marts
-res_parcels = f'{path}/Residential_Parcels_Network_AOI.shp'
-food_parcels = f'{path}/Food_Marts_Network_AOI.shp'
-# path for inundation
-inundation = f'{path}/Network_Inun.tif'
-raster = rio.open(inundation)
+
 
 # LOADING WORK ###############################################################
-#G = mynet.shape_2_graph(source=aoi_buffer)
-G_inun = mynet.read_graph_from_disk(
-    path='/home/mdp0023/Documents/Codes_Projects/network_analysis/Network_Testing_Data', name='AOI_Graph_Inundated')
+# AOI graph
+G = mynet.read_graph_from_disk(path=f'{folder_path}/AOI_Graphs', name='AOI_Graph')
+# AOI Inundated
+G_inun = mynet.read_graph_from_disk(path=f'{folder_path}/AOI_Graphs', name='AOI_Graph_Inundated')
+# traffic assignment
+G_TA = mynet.read_graph_from_disk(path=f'{folder_path}/AOI_Graphs', name='AOI_Graph_Traffic_Assignment')
 
-G = mynet.read_graph_from_disk(
-    path='/home/mdp0023/Documents/Codes_Projects/network_analysis/Network_Testing_Data', name='AOI_Graph')
 
-# G_TA = mynet.read_graph_from_disk(
-#     path='/home/mdp0023/Documents/Codes_Projects/network_analysis/Network_Testing_Data', name='AOI_Graph_Traffic_Assignment')
 
 G = mynet.rename(G=G)
 G_inun = mynet.rename(G=G_inun)
+G_TA = mynet.rename(G=G_TA)
 
 # LOAD OTHER DATA ############################################################
 # shapefile centroids of residental plots
@@ -65,8 +64,10 @@ food_locs = gpd.read_file(food_parcels)
 aoi_area = gpd.read_file(aoi_area)
 
 # ensure proper projection
-G_inun = ox.projection.project_graph(G_inun, to_crs=32614)
 G = ox.projection.project_graph(G, to_crs=32614)
+G_inun = ox.projection.project_graph(G_inun, to_crs=32614)
+G_TA = ox.projection.project_graph(G_TA, to_crs=32614)
+
 res_locs = res_locs.to_crs(epsg=32614)
 food_locs = food_locs.to_crs(epsg=32614)
 res_points = res_points.to_crs(epsg=32614)
@@ -106,7 +107,7 @@ G_out, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, re
 
 
 # print the list of attribute names for edges and nodes
-#print(list(list(G_TA.edges(data=True))[0][-1].keys()))
+# print(list(list(G_TA.edges(data=True))[0][-1].keys()))
 # print(list(list(G_out.nodes(data=True))[0][-1].keys()))
 
 # print(len(G_TA.edges))
@@ -121,10 +122,6 @@ output = mynet.traffic_assignment(G=G,
                                   method='CFW',
                                   termination_criteria=['iter',5])
 
-
-
-# G_TA = mynet.read_graph_from_disk(
-#     path='/home/mdp0023/Documents/Codes_Projects/network_analysis/Network_Testing_Data', name='AOI_Graph_Traffic_Assignment')
 
 mynet.plot_aoi(G=output[0], res_parcels=res_locs,
                     resource_parcels=food_locs,
