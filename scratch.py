@@ -20,7 +20,7 @@ np.set_printoptions(threshold=sys.maxsize)
 
 # AOI VARIABLES
 # Folder path
-folder_path = '/home/mdp0023/Documents/Codes_Projects/network_analysis/Network_Testing_Data/AOI_Testing'
+folder_path = '/home/mdp0023/Documents/Codes_Projects/Network_Analysis/Network_Testing_Data/AOI_Testing'
 # bounadry
 aoi_area = f'{folder_path}/AOI_Boundary/Neighborhood_Network_AOI.shp'
 # boundary with buffer 
