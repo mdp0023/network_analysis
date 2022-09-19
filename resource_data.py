@@ -102,7 +102,7 @@ resource_points = pd.concat(
 # Plot
 fig, ax = plt.subplots(figsize=[12,8])
 ax.axis('off')
-resource_points.plot('Resource', categorical=True, ax=ax, legend=True, 
+supermarket_points.plot('Resource', categorical=True, ax=ax, legend=True, 
                     legend_kwds={'loc': 'center left', 'bbox_to_anchor': (1, 0.5)})
 plt.show()
 

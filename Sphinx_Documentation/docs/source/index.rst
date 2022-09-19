@@ -10,19 +10,23 @@ Welcome to Network Exploration's documentation!
 
 This is the python library that contains functions for my ongoing network research. It utilizes NetworkX and OSMnx to route residential parcels to various resources under different circumstances. 
 
-Check out the :doc:`usage` section for further information.
+Check out the :doc:`usage` section for further information on the available functions. 
+
+Check out the :doc:`Walkthrough and Quickstart` section to learn the basic functionality of the package.
 
 
 .. note::
-   This project is under active and heavy development.
+   This project is under active and heavy development. The information displayed is for reference only, as a real public beta is in development.
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
+
+   Walkthrough and Quickstart
    usage
-   TODO
    API
+
 
 
 
