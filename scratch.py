@@ -37,6 +37,7 @@ raster = rio.open(inundation_raster)
 # VARIABLES USED #############################################################
 
 
+
 # LOADING WORK ###############################################################
 # AOI graph
 G = mynet.read_graph_from_disk(path=f'{folder_path}/AOI_Graphs', name='AOI_Graph')
