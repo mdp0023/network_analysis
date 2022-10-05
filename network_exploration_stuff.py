@@ -24,33 +24,38 @@ from collections import defaultdict
 # set some panda display options
 pd.set_option('display.max_columns', None)
 
+# CAPACITY TODOS
+# TODO: Change disruption impact on capacity - remove nodes that cannot support travel
+# TODO: Potentially - add capacity limitation to min cost flow calculations (i.e., ideal travel functions )
 
+
+# SPEED DISRUPTION TODOS
+# TODO: input new equations for speed disruption, possibly add bining feature
+
+
+# POTENTIAL LIMITATION TODOS
 # TODO: Some of the closest origin nodes are the destination nodes - for now assuming that no paths need to be calculated (i.e., can just walk)
-# TODO: Add road capacities in min cost flow calculation
-# TODO: Need to use different method to determine random node variable name in the min cost flow function
+
+
+# IMPROVEMENT TODOS
+# TODO: move digraph conversion into better spot and determine when it is needed
+# TODO: Move CRS check into functions
 # TODO: Min cost flow and max cost flow functions have some repeat code - I could condense a lot of the work
-# TODO: travel disruption - right now using arbitrary disruption
-#   for example - flood classificaiton 1 is set to reduce speed by 75%
-#                 flood classificaiton 2 is set to reduce speed by 95%
-#                 flood classificaiton 3 and higher reduces capacity to 0
-# TODO: change inundate network function to be more broad
-#   see above TODO, just needs to have more inputs
-#   this includes flood classificaitons and impacts on speed, etc.
 # TODO: Use kwargs methodology to create new edges with appropriate attributes
 #   see # TODO: KWARGS below in code for example
-# TODO: Move CRS check into functions
-# TODO: move digraph conversion into function
-#   There are a lot of cross overs between digraph and multigraph, need to
-#   examine this in more detail
-# TODO: In plot aoi - allow it to accept a list of dest parcels
-#   i.e., food and gas locations
 # TODO: read_graph_from_disk - problem with preserving dtypes so I hardcoded a
 #   temporary fix - right now it goes through the attributes and determines if
 #    it could be converted to a float - if it can it does
 #   this involves manually skipping oneway as well (i think b/c its bool)
 #   this was needed b/c  inundation_G load not preserve datatypes
-# TODO: convert parcel identificaiton (access vs. no access) to function
-# TODO: update shortest path and path to functions to the new modified ones - much quicker 
+# TODO: update shortest path and path to functions to the new modified ones - much quicker
+
+
+# OTHER TODOS
+# TODO: Need to use different method to determine random node variable name in the min cost flow function
+# TODO: In plot aoi - allow it to accept a list of dest parcels
+#   i.e., food and gas locations# TODO: convert parcel identificaiton (access vs. no access) to function
+
 
 
 
@@ -75,43 +80,10 @@ pd.set_option('display.max_columns', None)
 #   classification (e.g., freeways)
 
 
-# VARIABLES USED #############################################################
-# # file path
-# path = "/home/mdp0023/Documents/Codes_Projects/\
-# network_analysis/Network_Testing_Data"
-# image_path = "/home/mdp0023/Documents/Codes_Projects/\
-# network_analysis/Poster_Graphics"
-# inset_path = "/home/mdp0023/Documents/Codes_Projects/network_analysis/bboxes"
-# # AOI without buffer
-# aoi_area = f'{path}/Neighborhood_Network_AOI.shp'
-# # AOI with buffer
-# aoi_buffer = f'{path}/Neighborhood_Network_AOI_Buf_1km.shp'
-# # centroids of res parcels and food marts
-# res_points_loc = f'{path}/Residential_Parcels_Points_Network_AOI.shp'
-# food_points_loc = f'{path}/Food_Marts_Points_Network_AOI.shp'
-# # shapefiles of res parcels and food marts
-# res_parcels = f'{path}/Residential_Parcels_Network_AOI.shp'
-# food_parcels = f'{path}/Food_Marts_Network_AOI.shp'
-# # path for inundation
-# inundation = f'{path}/Network_Inun.tif'
-# raster = rio.open(inundation)
-
-# # LOAD OTHER DATA ############################################################
-# # shapefile centroids of residental plots
-# res_points = gpd.read_file(res_points_loc)
-# # shapefile of res parcels
-# res_locs = gpd.read_file(res_parcels)
-# # shapefile centroids of 3 foodmart plots
-# food_points = gpd.read_file(food_points_loc)
-# # shapefile of food mart parcels
-# food_locs = gpd.read_file(food_parcels)
-# # shapefile of area of interest
-# aoi_area = gpd.read_file(aoi_area)
-
 # THE FUNCTIONS #############################################################
 
 
-def shape_2_graph(source=''):
+def shape_2_graph(source):
     '''
     Extracts road network from shapefile.
 
@@ -135,12 +107,71 @@ def shape_2_graph(source=''):
     
     '''
 
+    # extracting from OSMNx requires crs to be EPSG:4326(WGS84). This will preserve output crs if projected
+    boundary = gpd.read_file(source)
+    crs_proj = boundary.crs
+    boundary=boundary.to_crs("EPSG:4326")
+
+
     G = ox.graph_from_polygon(
-        gpd.read_file(source)['geometry'][0],
+        boundary['geometry'][0],
         network_type='drive')
 
+    # add edge speeds where they exist
     ox.add_edge_speeds(G)
+    # add travel times 
     ox.add_edge_travel_times(G)
+
+
+    # some highways types have multiple inputs (e.g., ['residential','unclassified']), which messes with capacity and width assignments
+    # determine which edges have multiple road types and select the first from the list to be that value
+    highway_edge_attr = nx.get_edge_attributes(G, 'highway')
+    edges = [k for k, v in highway_edge_attr.items() if not isinstance(v, str)]
+    for edge in edges:
+        list = G.get_edge_data(edge[0], edge[1], edge[2])['highway']
+        G[edge[0]][edge[1]][edge[2]]['highway'] = list[0]
+    # updated edge attributes
+    highway_edge_attr = nx.get_edge_attributes(G, 'highway')
+    # set per lane capacities based on following scheme:
+        # Motorway & its links                                  : 2300 pcu/hr/ln
+        # Trunk & its links                                     : 2300 pcu/hr/ln
+        # Primary & its links                                   : 1700 pcu/hr/ln
+        # Secondary & its links                                 : 1500 pcu/hr/ln
+        # Tertiary & its links                                  : 1000 pcu/hr/ln
+        # Residential, minor, living street, and unclassified   :  600 pcu/hr/ln
+    for k, v in highway_edge_attr.items():
+        if v == 'motorway' or v == 'motorway_link' or v == 'trunk' or v == 'trunk_link':
+            G[k[0]][k[1]][k[2]]['capacity'] = 2300
+        elif v == 'primary' or v == 'primary_link':
+            G[k[0]][k[1]][k[2]]['capacity'] = 1700
+        elif v == 'secondary' or v == 'secondary_link':
+            G[k[0]][k[1]][k[2]]['capacity'] = 1500
+        elif v == 'tertiary' or v == 'tertiary_link':
+            G[k[0]][k[1]][k[2]]['capacity'] = 1000
+        elif v == 'residential' or v == 'minor' or v == 'living_street' or v == 'unclassified':
+            G[k[0]][k[1]][k[2]]['capacity'] = 600
+
+
+    # some roads gain/lose lanes during uninterupted segments, and therefore lanes are reported as a list (e.g., ['3', '4', '2'])
+    # determine which edges have multiple number of lanes and replace with the smallest one available 
+    highway_edge_attr = nx.get_edge_attributes(G, 'lanes')
+    edges = [k for k, v in highway_edge_attr.items() if not isinstance(v, str)]
+    for edge in edges:
+        list = G.get_edge_data(edge[0], edge[1], edge[2])['lanes']
+        list_int = [int(i) for i in list]
+        minimum = min(list_int)       
+        G[edge[0]][edge[1]][edge[2]]['lanes'] = minimum
+
+    # convert all lanes to int, for some reason reported as strings
+    highway_edge_attr = nx.get_edge_attributes(G, 'lanes')
+    highway_edge_attr_int = dict([k, int(v)] for k, v in highway_edge_attr.items())
+    nx.set_edge_attributes(G,highway_edge_attr_int, 'lanes')
+
+
+    
+
+    # project back to original crs
+    ox.project_graph(G, crs_proj)
 
     return(G)
 
@@ -827,10 +858,7 @@ def inundate_network(G='', CRS=32614, path='', inundation=''):
     '''
     Create a new graph network based on the imapct of an inundation layer.
 
-    Currently - An inundation layer is overlayed on a graph network. The maximum depth that intersects each road segment (within a given 
-    distance based on the type of road, **this needs to become a parameter and should be customizable**). That maximum depth is then equated 
-    to a decrease in speed and/or capacity on that entire road segment (**also needs attention** because water on a road segment might only impact
-    poritions of that segment). 
+    Currently - An inundation layer is overlayed on a graph network. The maximum depth that intersects each road segment (within a given distance based on the type of road, **this needs to become a parameter and should be customizable**). That maximum depth is then equated to a decrease in speed and/or capacity on that entire road segment (**also needs attention** because water on a road segment might only impact poritions of that segment). 
 
     This function adds attributes including:
 
@@ -840,14 +868,11 @@ def inundate_network(G='', CRS=32614, path='', inundation=''):
     - inundation_speed_kph
     - inundation_travel_time
     
-    **Important Note** - There are a number of methodologies in which this can be accomplished, and others need to be explored further. The 
-    documenation listed must be updated regularly whenever changes are made to reflect current options of this function. Just a few things that need
-    to be addressed include:
+    **Important Note** - There are a number of methodologies in which this can be accomplished, and others need to be explored further. The documenation listed must be updated regularly whenever changes are made to reflect current options of this function. Just a few things that need to be addressed include:
 
     - customizable road widths
     - customizable impacts - based on the literature
     - impact on partial segments compared to entire segment
-
 
     :param G: The graph network
     :type G: networkx.Graph [Multi, MultiDi, Di]
@@ -918,12 +943,15 @@ def inundate_network(G='', CRS=32614, path='', inundation=''):
     bounds = [0.01, 0.15, 0.29, 0.49, 0.91, 1.07]
 
     for idx, f_class in enumerate(flood_classes):
+        # set to flood class 0 if max inundation is less than 0.01
         if idx == 0:
             edges.loc[edges['max_inundation'] < bounds[0],
                       'inundation_class'] = f_class
+        # set to last flood class (6) if max inundation is greater than last bound (1.07)
         elif idx == len(flood_classes)-1:
             edges.loc[edges['max_inundation'] > bounds[-1],
                       'inundation_class'] = f_class
+        # set to given flood class if falls between the appropriate bounds
         else:
             edges.loc[(edges['max_inundation'] > bounds[idx-1]) &
                       (edges['max_inundation'] <= bounds[idx]),
@@ -949,6 +977,8 @@ def inundate_network(G='', CRS=32614, path='', inundation=''):
     # if inundation is anything above 2, set speed to 0
     edges.loc[edges['inundation_class'] >= 3,
               'inundation_speed_kph'] = 0
+
+              
 
     # calculate inundation travel time, replace inf with 0
     edges['inundation_travel_time'] = edges['length']/(edges[
