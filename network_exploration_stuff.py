@@ -112,7 +112,6 @@ def shape_2_graph(source):
     crs_proj = boundary.crs
     boundary=boundary.to_crs("EPSG:4326")
 
-
     G = ox.graph_from_polygon(
         boundary['geometry'][0],
         network_type='drive')
@@ -122,16 +121,16 @@ def shape_2_graph(source):
     # add travel times 
     ox.add_edge_travel_times(G)
 
-
     # some highways types have multiple inputs (e.g., ['residential','unclassified']), which messes with capacity and width assignments
     # determine which edges have multiple road types and select the first from the list to be that value
-    highway_edge_attr = nx.get_edge_attributes(G, 'highway')
-    edges = [k for k, v in highway_edge_attr.items() if not isinstance(v, str)]
+    edge_rtype = nx.get_edge_attributes(G, 'highway')
+    edges = [k for k, v in edge_rtype.items() if not isinstance(v, str)]
     for edge in edges:
         list = G.get_edge_data(edge[0], edge[1], edge[2])['highway']
         G[edge[0]][edge[1]][edge[2]]['highway'] = list[0]
-    # updated edge attributes
-    highway_edge_attr = nx.get_edge_attributes(G, 'highway')
+    
+    # updated edge attributes variable to update lane capacities
+    edge_rtype = nx.get_edge_attributes(G, 'highway')
     # set per lane capacities based on following scheme:
         # Motorway & its links                                  : 2300 pcu/hr/ln
         # Trunk & its links                                     : 2300 pcu/hr/ln
@@ -139,7 +138,7 @@ def shape_2_graph(source):
         # Secondary & its links                                 : 1500 pcu/hr/ln
         # Tertiary & its links                                  : 1000 pcu/hr/ln
         # Residential, minor, living street, and unclassified   :  600 pcu/hr/ln
-    for k, v in highway_edge_attr.items():
+    for k, v in edge_rtype.items():
         if v == 'motorway' or v == 'motorway_link' or v == 'trunk' or v == 'trunk_link':
             G[k[0]][k[1]][k[2]]['capacity'] = 2300
         elif v == 'primary' or v == 'primary_link':
@@ -154,8 +153,8 @@ def shape_2_graph(source):
 
     # some roads gain/lose lanes during uninterupted segments, and therefore lanes are reported as a list (e.g., ['3', '4', '2'])
     # determine which edges have multiple number of lanes and replace with the smallest one available 
-    highway_edge_attr = nx.get_edge_attributes(G, 'lanes')
-    edges = [k for k, v in highway_edge_attr.items() if not isinstance(v, str)]
+    edge_lane = nx.get_edge_attributes(G, 'lanes')
+    edges = [k for k, v in edge_lane.items() if not isinstance(v, str)]
     for edge in edges:
         list = G.get_edge_data(edge[0], edge[1], edge[2])['lanes']
         list_int = [int(i) for i in list]
@@ -163,15 +162,73 @@ def shape_2_graph(source):
         G[edge[0]][edge[1]][edge[2]]['lanes'] = minimum
 
     # convert all lanes to int, for some reason reported as strings
-    highway_edge_attr = nx.get_edge_attributes(G, 'lanes')
-    highway_edge_attr_int = dict([k, int(v)] for k, v in highway_edge_attr.items())
-    nx.set_edge_attributes(G,highway_edge_attr_int, 'lanes')
+    edge_lane = nx.get_edge_attributes(G, 'lanes')
+    edge_lane_int = dict([k, int(v)] for k, v in edge_lane.items())
+    nx.set_edge_attributes(G, edge_lane_int, 'lanes')
+
+    # Not all edges have lane information, need to fill in gaps and determine road widths
+    # Factor of the type of road and if it is one way or not
+    # Number of lanes ONE WAY will go as follows:
+        # Trunk:                                                4
+        # Motorway:                                             4
+        # Primary:                                              3
+        # Secondary:                                            2
+        # Tertiary:                                             1
+        # Residential, minor, unclassified, living street:      1
+        # all link roads (typically on ramps or slip lanes):    1
+    # AVERAGE LANE WIDTH IN METERS
+    lane_width = 3.7
+    edge_lane = nx.get_edge_attributes(G, 'lanes')
+    edge_oneway = nx.get_edge_attributes(G, 'oneway')
+    edge_rtype = nx.get_edge_attributes(G, 'highway')
 
 
+    for k,v in edge_rtype.items():
+        # for oneway roads...
+        if G[k[0]][k[1]][k[2]]['oneway'] is True:
+            # that have OSMNx lane information
+            if 'lanes' in G[k[0]][k[1]][k[2]]:
+                G[k[0]][k[1]][k[2]]['width'] = lane_width*G[k[0]][k[1]][k[2]]['lanes']
+            # need lane information
+            else:
+                if v == 'trunk' or v == 'motorway' :
+                    G[k[0]][k[1]][k[2]]['lanes'] = 4
+                    G[k[0]][k[1]][k[2]]['width'] = 4* lane_width
+                elif v == 'primary':
+                    G[k[0]][k[1]][k[2]]['lanes'] = 3
+                    G[k[0]][k[1]][k[2]]['width'] = 3 * lane_width
+                elif v == 'secondary':
+                    G[k[0]][k[1]][k[2]]['lanes'] = 2
+                    G[k[0]][k[1]][k[2]]['width'] = 2 * lane_width
+                elif v == 'tertiary' or v == 'residential' or v == 'minor' or v == 'unclassified' or v == 'living_street' or v == 'trunk_link' or v == 'motorway_link' or v == 'primary_link' or v == 'secondary_link' or v == 'tertiary_link':
+                    G[k[0]][k[1]][k[2]]['lanes'] = 1
+                    G[k[0]][k[1]][k[2]]['width'] = 1 * lane_width
+        # for roads not listed as one-way roads...
+        else:
+            # that have OSMNx lane information
+            if 'lanes' in G[k[0]][k[1]][k[2]]:
+                G[k[0]][k[1]][k[2]]['width'] = lane_width*G[k[0]][k[1]][k[2]]['lanes']
+            # need lane information
+            else:
+                if v == 'trunk' or v == 'motorway' :
+                    G[k[0]][k[1]][k[2]]['lanes'] = 8
+                    G[k[0]][k[1]][k[2]]['width'] = 8* lane_width
+                elif v == 'primary':
+                    G[k[0]][k[1]][k[2]]['lanes'] = 6
+                    G[k[0]][k[1]][k[2]]['width'] = 6 * lane_width
+                elif v == 'secondary':
+                    G[k[0]][k[1]][k[2]]['lanes'] = 4
+                    G[k[0]][k[1]][k[2]]['width'] = 4 * lane_width
+                elif v == 'tertiary' or v == 'residential' or v == 'minor' or v == 'unclassified' or v == 'living_street':
+                    G[k[0]][k[1]][k[2]]['lanes'] = 2
+                    G[k[0]][k[1]][k[2]]['width'] = 2 * lane_width
+                elif v == 'trunk_link' or v == 'motorway_link' or v == 'primary_link' or v == 'secondary_link' or v == 'tertiary_link':
+                    G[k[0]][k[1]][k[2]]['lanes'] = 1
+                    G[k[0]][k[1]][k[2]]['width'] = 1 * lane_width
     
 
     # project back to original crs
-    ox.project_graph(G, crs_proj)
+    G=ox.project_graph(G, crs_proj)
 
     return(G)
 
@@ -327,25 +384,17 @@ def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
     # create empty lists for nodes of origins and destinations
     origins = []
     destinations = []
-    # append origins to have nearest node (intersection) of all res_points
-    for x in list(range(0, len(res_points))):
-        res_point = res_points.iloc[[x]]
-        res_lon = res_point['geometry'].x.iloc[0]
-        res_lat = res_point['geometry'].y.iloc[0]
-        origin = ox.distance.nearest_nodes(G, res_lon, res_lat)
-        origins.append(origin)
-        # add new column to res_points dataframe with nearest node
-        res_points.loc[res_points.index[x],'nearest_node'] = int(origin)
-        
-    # append destinations to have nearest node (intersections) of all dest_points
-    for x in list(range(0, len(dest_points))):
-        des_point = dest_points.iloc[[x]]
-        des_lon = des_point['geometry'].x.iloc[0]
-        des_lat = des_point['geometry'].y.iloc[0]
-        destination = ox.distance.nearest_nodes(G, des_lon, des_lat)
-        destinations.append(destination)
-        # add new column to des_points dataframe with nearest node
-        dest_points.loc[res_points.index[x], 'nearest_node'] = int(destination)
+ 
+    # append res_points with nearest network node
+    longs=res_points.geometry.x
+    lats=res_points.geometry.y
+    origins = ox.distance.nearest_nodes(G, longs, lats)
+    res_points['nearest_node'] = origins
+
+    longs=dest_points.geometry.x
+    lats=dest_points.geometry.y
+    origins = ox.distance.nearest_nodes(G, longs, lats)
+    dest_points['nearest_node'] = origins
 
     # Creat the demand attribute and set all equal to 0
     #TODO: make sure this has no impact on other functions
@@ -373,7 +422,8 @@ def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
 
     # Convert graph to digraph format
     # TODO: Need to see if this is having an impact on the output
-    G = nx.DiGraph(G)
+    # BUG: DiGraph???? This is causing a problem elsewhere need to explore further
+    #G = nx.DiGraph(G)
     # add source information (the negative demand value prev. calculated)
     nx.set_node_attributes(G, unique_origin_nodes_counts)
 
@@ -756,7 +806,8 @@ def plot_aoi(G='', res_parcels='',
         my_cmap[0][3] = 0
         # Create new colormap
         my_cmap = ListedColormap(my_cmap)
-        show(raster, ax=ax, cmap=my_cmap, zorder=100)
+        # BUG: previous, below code was raster instead of inundation - wouldn't work, don't know what should be here
+        show(inundation, ax=ax, cmap=my_cmap, zorder=100)
 
     # optional plot inset boundaries
     if insets is None:
@@ -854,7 +905,7 @@ def summary_function(G=''):
     return(num_edges, num_nodes, fig)
 
 
-def inundate_network(G='', CRS=32614, path='', inundation=''):
+def inundate_network(G='', path='', inundation=''):
     '''
     Create a new graph network based on the imapct of an inundation layer.
 
@@ -870,14 +921,11 @@ def inundate_network(G='', CRS=32614, path='', inundation=''):
     
     **Important Note** - There are a number of methodologies in which this can be accomplished, and others need to be explored further. The documenation listed must be updated regularly whenever changes are made to reflect current options of this function. Just a few things that need to be addressed include:
 
-    - customizable road widths
     - customizable impacts - based on the literature
     - impact on partial segments compared to entire segment
 
-    :param G: The graph network
+    :param G: The graph network. Should have projected coordinates.
     :type G: networkx.Graph [Multi, MultiDi, Di]
-    :param CRS: Coordinate reference system to conduct overlay in. *Default=32614, eqivalent to UTM14N*
-    :type CRS: int
     :param path: File path to save output graph network to.
     :type path: string
     :param inundation: File path to inundation raster .tif
@@ -890,9 +938,7 @@ def inundate_network(G='', CRS=32614, path='', inundation=''):
     
     nodes, edges = ox.graph_to_gdfs(G)
 
-    # need to set a CRS for the edges to plot properly (UNITS FOR BUFFER)
-    edges = edges.to_crs(epsg=CRS)  # WGS84/UTM 14N
-    nodes = nodes.to_crs(epsg=CRS)
+
     # B/C map is in meters, buffer will also be in meters
     # Each road has different number of lanes and therefore diferent buffer
     # Set width variables from intuition:
