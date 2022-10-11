@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import osmnx as ox
 import plotly.express as px
+from shapely.geometry import Point, Polygon
 
 
 
@@ -118,6 +119,45 @@ def resource_centroids(boundary, resources = 'default', custom_r=None, disused_f
     return resource_points
 
 
+def resource_parcels(points, parcels, save):
+    """Extract parcels given known set of centroids.
+    
+    Parcel data is not regularly available in OSMNx. This function does a simple relate of the centroid points and parcel file to extract the associated resource parcels. The output resource parcel file will contain an attribute with information on what and how many resources are located within each boundary. Some parcels will house multiple resources (of the same type of different type) and the 'Resources' attribute should provide that information.
+
+    :param points: Filepath to .shp file of points/centroids of interest. Should have projected coordinates of study area
+    :type points: string
+    :param parcels: Filepath to .shp file of parcels of interest. Should have projected coordinates of study area
+    :type parcels: string 
+    
+    :return: **resource_parcels**, geopandas shapefile of parcels of resource locations
+    :rtype: geopandas shapefile
+    
+    """
+    points = gpd.read_file(points)
+    parcels = gpd.read_file(parcels)
+
+    # get unique resource names
+    unique_res = points['Resource'].unique()
+    #spatial join 
+    dfsjoin = gpd.sjoin(parcels, points)
+    dfpivot = pd.pivot_table(dfsjoin, index='GEO_ID', columns='Resource',aggfunc={'Resource':len})
+    dfpivot.columns = dfpivot.columns.droplevel()
+    dfpolynew = parcels.merge(dfpivot, how='left', on='GEO_ID')
+
+    # create a new column that is the total sum of all resources
+    dfpolynew['Resource_Sum'] = dfpolynew[unique_res].sum(axis=1)
+   
+    # create new resource parcel data layer
+    resource_parcels = dfpolynew[dfpolynew['Resource_Sum'] > 0]
+
+    if save is not None:
+        resource_parcels.to_file(save)
+    
+    pass
+
+
+
+########################################################################
 # VARIABLES
 place = 'Austin, Texas, USA'
 aoi_crs = 32614
@@ -130,13 +170,22 @@ SC_output = f'{folder}/Shoal_Creek/SC_Resource_Parcel_Shapefiles/SC_Supermarket_
 AN_output = f'{folder}/Austin_North/AN_Resource_Parcel_Shapefiles/AN_Supermarket_Parcel_Points.shp'
 BPA_output = f'{folder}/Beaumont_Port_Arthur/BPA_Resource_Parcel_Shapefiles/BPA_Supermarket_Parcel_Points.shp'
 
-custom_r = [{'shop': 'supermarket'}]
+AN_parcel_output = f'{folder}/Austin_North/AN_Resource_Parcel_Shapefiles/AN_Supermarket_Parcel.shp'
+BPA_parcel_output = f'{folder}/Beaumont_Port_Arthur/BPA_Resource_Parcel_Shapefiles/BPA_Supermarket_Parcel.shp'
 
-resource_points = resource_centroids(boundary = BPA_boundary_file,
-                                    resources = 'custom',
-                                    custom_r = custom_r,
-                                    disused_filter = True,
-                                     save=BPA_output)
+AN_parcels = '/home/mdp0023/Desktop/external/Data/Boundaries/Parcels/Travis_County_Parcels_2019/shp/Travis_County_Parcels_2019.shp'
+BPA_parcels = '/home/mdp0023/Desktop/external/Data/Boundaries/Parcels/Beaumont_Port_Arthur_Parcels_2022/BPA_Residential_Parcels_Shapefiles.shp'
+
+custom_r = [{'shop': 'supermarket'}]
+########################################################################
+# resource_points = resource_centroids(boundary = BPA_boundary_file,
+#                                     resources = 'custom',
+#                                     custom_r = custom_r,
+#                                     disused_filter = True,
+#                                     save=BPA_output)
+
+
+resource_parcels(points=BPA_output, parcels=BPA_parcels, save=BPA_parcel_output)
 
 
 ####################################################################################
