@@ -2,6 +2,8 @@
 
 # Packages
 import network_exploration_stuff as mynet
+import matplotlib.pyplot as plt
+import geopandas as gpd
 import rasterio as rio
 import networkx as nx
 import pandas as pd
@@ -11,18 +13,28 @@ import logging
 # ignore shapely deprectiation warnings
 logging.captureWarnings(True)
 
-# AOI VARIABLES
+############################################################################################
+# INPUT VARIABLES
 # Folder path
 folder_path = '/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North'
 # bounadry and boundary with buffer
 aoi_area = f'{folder_path}/AN_Boundary/AN_Boundary.shp'
 aoi_buffer = f'{folder_path}/AN_Boundary/AN_Boundary_3km.shp'
 # Centroids of res parcels and grocery stores
-res_points_loc = f'{folder_path}/Austin_North/AN_Residential_Parcel_Shapefiles/AN_Residential_Parcels_Points.shp.shp'
-food_points_loc = f'{folder_path}/N_Resource_Parcel_Shapefiles/AN_Supermarket_Parcel_Points.shp.shp'
+res_parcel_loc = f'{folder_path}/AN_Residential_Parcel_Shapefiles/AN_Residential_Parcels.shp'
+res_points_loc = f'{folder_path}/AN_Residential_Parcel_Shapefiles/AN_Residential_Parcels_Points.shp'
+food_parcel_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_Supermarket_Parcel.shp'
+food_points_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_Supermarket_Parcel_Points.shp'
+
+res_parcels = gpd.read_file(res_parcel_loc)
+res_points = gpd.read_file(res_points_loc)
+food_parcels = gpd.read_file(food_parcel_loc)
+food_points = gpd.read_file(food_points_loc)
 # Inundation raster
 # inundation_raster = f'{folder_path}/AN_Inundation/AN_Memorial_Day_Compound.tif'
 # raster = rio.open(inundation_raster)
+############################################################################################
+
 
 G = mynet.shape_2_graph(aoi_buffer)
 
@@ -56,3 +68,17 @@ print(f"percentage edges with speed info: {percent_edge_w_speed}")
 print(f"percentage edges with rtype info: {percent_edge_w_rtype}")
 print(f"percentage edges with cap info  : {percent_edge_w_cap}")
 
+
+G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points = mynet.nearest_nodes(G=G,
+                                                                                                                        res_points=res_points,
+                                                                                                                        dest_points=food_points, 
+                                                                                                                        G_demand='demand')
+
+edge_attributes = list(list(G.edges(data=True))[0][-1].keys())
+
+print(edge_attributes)
+print(len(G.nodes()))
+print(len(G.edges()))
+
+mynet.plot_aoi(G=G, res_parcels=res_parcels, resource_parcels=food_parcels)
+plt.show()
