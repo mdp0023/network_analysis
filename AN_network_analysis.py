@@ -37,6 +37,7 @@ food_points = gpd.read_file(food_points_loc)
 
 
 G = mynet.shape_2_graph(aoi_buffer)
+G = mynet.rename(G=G)
 
 # available edge and node attributes
 edge_attributes = list(list(G.edges(data=True))[0][-1].keys())
@@ -69,16 +70,42 @@ print(f"percentage edges with rtype info: {percent_edge_w_rtype}")
 print(f"percentage edges with cap info  : {percent_edge_w_cap}")
 
 
+
 G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points = mynet.nearest_nodes(G=G,
                                                                                                                         res_points=res_points,
                                                                                                                         dest_points=food_points, 
                                                                                                                         G_demand='demand')
 
-edge_attributes = list(list(G.edges(data=True))[0][-1].keys())
 
+print(f'total demand: {positive_demand}')
+
+edge_attributes = list(list(G.edges(data=True))[0][-1].keys())
 print(edge_attributes)
 print(len(G.nodes()))
 print(len(G.edges()))
 
-mynet.plot_aoi(G=G, res_parcels=res_parcels, resource_parcels=food_parcels)
+output = mynet.max_flow_parcels(G=G, res_points=res_points, dest_points=food_points,
+                                G_capacity='capacity', G_weight='travel_time', G_demand='demand')
+
+flow_dictionary = output[0]
+cost_of_flow = output[1]
+max_flow = output[2]
+access = output[3]
+
+print(access)
+print(max_flow)
+
+
+#relate flow dictionary back to DRY graph for plotting purposes
+G_map = nx.DiGraph(G)
+# relate
+for edge in G_map.edges:
+    values = {(edge[0], edge[1]): {'dry_flow':
+                                   flow_dictionary[edge[0]][edge[1]]}}
+    nx.set_edge_attributes(G=G_map, values=values)
+G_map = nx.MultiDiGraph(G_map)
+
+
+mynet.plot_aoi(G=G_map, res_parcels=res_parcels,
+               resource_parcels=food_parcels, edge_width='dry_flow')
 plt.show()
