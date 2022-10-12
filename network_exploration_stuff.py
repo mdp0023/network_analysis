@@ -230,6 +230,7 @@ def shape_2_graph(source):
     # project back to original crs
     G=ox.project_graph(G, crs_proj)
 
+
     return(G)
 
 
@@ -393,45 +394,31 @@ def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
 
     longs=dest_points.geometry.x
     lats=dest_points.geometry.y
-    origins = ox.distance.nearest_nodes(G, longs, lats)
-    dest_points['nearest_node'] = origins
+    destinations = ox.distance.nearest_nodes(G, longs, lats)
+    dest_points['nearest_node'] = destinations
 
-    # Creat the demand attribute and set all equal to 0
-    #TODO: make sure this has no impact on other functions
-        # it's not necessary - but is meant to keep values for every attribute instead of having missing data/holes in attributes
-        # THIS IS IMPACTING G ELSEWHERE AS WELL - MIGHT BE MAJOR ERROR
+    # Create the demand attribute and set all equal to 0
     nx.set_node_attributes(G, values=0, name=G_demand)
 
+    # counting taking too long trying a new approach
+    from collections import Counter
+    #unique_origin_nodes_counts = dict(Counter(origins).items())
+    unique_origin_nodes_counts = dict(zip(list(Counter(origins).keys()), [x*-1 for x in Counter(origins).values()]))
+    
     # Create list of unique origins and destinations
     unique_origin_nodes = np.unique(origins)
     unique_dest_nodes = np.unique(destinations)
-    # Based on unique origins, determine negative demands (source values)
-    unique_origin_nodes_counts = {}
-    for unique_node in unique_origin_nodes:
-        count = np.count_nonzero(origins == unique_node)
-        unique_origin_nodes_counts[unique_node] = {G_demand: -1*count}
-    # set demand at  unique dest nodes to 0 (SEE TODO) - if a source and sink share an intersection, then we assume it is within walking distance and is always accessible
-    shared_nodes = []
-    for x in unique_dest_nodes:
-        unique_origin_nodes_counts[x] = {G_demand: 0}
-        # Remove from the unique origin nodes because no longer an origin
-        unique_origin_nodes = np.delete(
-            unique_origin_nodes, np.where(unique_origin_nodes==x))
-        # Create a list of shared nodes
-        shared_nodes.append(x)
+    
+    # determine shared nodes and set demand equal to 0
+    shared_nodes = list(set(unique_origin_nodes) & set(unique_dest_nodes))
+    for x in shared_nodes:
+        unique_origin_nodes_counts[x] = 0
 
-    # Convert graph to digraph format
-    # TODO: Need to see if this is having an impact on the output
-    # BUG: DiGraph???? This is causing a problem elsewhere need to explore further
-    #G = nx.DiGraph(G)
     # add source information (the negative demand value prev. calculated)
-    nx.set_node_attributes(G, unique_origin_nodes_counts)
+    nx.set_node_attributes(G, unique_origin_nodes_counts, G_demand)
 
     # Calculate the positive demand: the sink demand
-    demand = 0
-    for x in unique_origin_nodes_counts:
-        demand += unique_origin_nodes_counts[x][G_demand]
-    positive_demand = demand*-1
+    positive_demand = sum(unique_origin_nodes_counts.values())*-1
 
     return(G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points)
 
@@ -616,6 +603,15 @@ def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity',
 
     '''
 
+    # for many functions to work, graph needs to be a digraph (NOT a multidigraph) i.e., no parallel edges
+    # TODO factor in check of parallel edges. For now, just convert to digraph
+    G = nx.DiGraph(G)
+
+    # TODO: examine if ignoring capcities will be needed to test max flow 
+    # ignore_capacity=True
+    # if ignore_capacity is True:
+    #     nx.set_edge_attributes(G, 999999999999, name=G_capacity)
+
     # Travel times must be whole numbers - just round values
     for x in G.edges:
         G.edges[x][G_weight] = round(G.edges[x][G_weight])
@@ -641,7 +637,6 @@ def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity',
     for x in unique_dest_nodes:
         kwargs={f"{G_weight}":0}
         G.add_edge(x, 99999999, **kwargs)
-
 
 
     # run the max_flow_min_cost function to retrieve FlowDict
@@ -765,23 +760,25 @@ def plot_aoi(G='', res_parcels='',
             flows.append(flow_dict[x])
         unique_flows = np.unique(flows).tolist()
         unique_flows.pop(0)
-
         old_min = min(unique_flows)
         old_max = max(unique_flows)
         new_min = 1
         new_max = 7
 
-        for flow in unique_flows:
-            new_value = (((flow - old_min) * (new_max - new_min)) /
-                         (old_max - old_min)) + new_min
+        # TODO: could add user inputs to assign values here
+        # plotting each scaled width is too much, must bin into groups of 100
+        bounds = np.linspace(1,max(unique_flows), num=8)
+        widths = np.linspace(new_min, new_max, num=7)
 
-            # the following is selection of graph nodes and edges natively
-            # having trouble plotting this for unknown reason though
-            # selected_edges = [(u, v, e)
-            #                  for u, v, e in G.edges(data=True) if e[edge_width] == flow]
+        # previous width determination method => scale each to new min/max
+        # for flow in unique_flows:
+        #     new_value = (((flow - old_min) * (new_max - new_min)) /
+        #                  (old_max - old_min)) + new_min
+        
+        for idx, width in enumerate(widths):
 
             # select edges of gdf based on flow value
-            selected_edges = G_gdf_edges[G_gdf_edges[edge_width] == flow]
+            selected_edges = G_gdf_edges[(G_gdf_edges[edge_width] >= bounds[idx]) & (G_gdf_edges[edge_width] < bounds[idx+1])]
             sub = ox.graph_from_gdfs(gdf_edges=selected_edges,
                                      gdf_nodes=G_gdf_nodes)
 
@@ -790,7 +787,7 @@ def plot_aoi(G='', res_parcels='',
                                node_size=0,
                                edge_color='black',
                                show=False,
-                               edge_linewidth=new_value,
+                               edge_linewidth=width,
                                bbox=total_bounds)
 
     # optional plot inundation raster
