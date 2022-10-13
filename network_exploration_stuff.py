@@ -392,6 +392,7 @@ def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
     origins = ox.distance.nearest_nodes(G, longs, lats)
     res_points['nearest_node'] = origins
 
+    # will find the nearest node based solely on the centroid of resource parcel (i.e., dest_points)
     longs=dest_points.geometry.x
     lats=dest_points.geometry.y
     destinations = ox.distance.nearest_nodes(G, longs, lats)
@@ -420,7 +421,103 @@ def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
     # Calculate the positive demand: the sink demand
     positive_demand = sum(unique_origin_nodes_counts.values())*-1
 
+    # TODO: I don't think returning res_points or dest_points is neccessary and can be removed
     return(G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points)
+
+
+def nearest_nodes_vertices(G='', res_points='', dest_parcels='', G_demand='demand'):
+    '''
+    MODIFICATION OF NEAREST_NODES FUNCTION TO SNAP DEST PARCELS TO MULTIPLE NODES
+    
+    Return Graph with demand attribute based on snapping sources/sinks to nearest nodes (intersections).
+    
+    The purpose of this function is take a series of input locations and determine the nearest nodes (intersections) within a Graph network. It takes this information to create source and sink information. 
+
+    **Important Note**: The output graph has an attribute labeled G_demand, which shows the number of closest residential parcels to each unique intersection. Because these are considered sources, they have a negative demand. Sink locations, or the intersections that are closest to the the dest_points, will not have a demand value (G_demand == 0) because we do not know how much flow is going to that node until after a min-cost flow algorithm is run. I.e., to route properly, we end up creating an artifical sink and then decompose the flow to determine how much flow is going to each destination.
+
+    :param G: Graph network
+    :type G: networkx.Graph [Multi, MultiDi, Di]
+    :param res_points: Point locations of all of the residential parcels
+    :type res_points: geopandas.GeoDataFrame
+    :param dest_parcels: Parcels of all of the resources the residential parcels are to be routed to
+    :type dest_points: geopandas.GeoDataFrame
+    :param G_demand: name of attribuet in G refering to node demand, *Default='demand*
+    :type G_demand: string
+    :returns: 
+        - **G**, *networkx.DiGraph* with G_demand attribute showing source values (negative demand)
+        - **unique_origin_nodes**, *lst* of unique origin nodes
+        - **unique_dest_nodes**, *lst* of unqiue destination nodes
+        - **positive_demand**, *int* of the total positive demand across the network. **Does not include the residents that share a closest intersection with a resource parcel.**
+        - **Shared_nodes**, *lst* of nodes that res and destination parcels share same nearest 
+        - **res_points**, *geopandas.GeoDataFrame*, residential points with appended attribute of 'nearest_node'
+        - **dest_points**, *geopandas.GeoDataFrame*, destination/sink points with appended attribute of 'nearest_node'
+    :rtype: tuple
+
+    '''
+
+    # create empty lists for nodes of origins and destinations
+    origins = []
+    destinations = []
+
+    # append res_points with nearest network node
+    longs = res_points.geometry.x
+    lats = res_points.geometry.y
+    origins = ox.distance.nearest_nodes(G, longs, lats)
+    res_points['nearest_node'] = origins
+
+    # Will determine vertices of dest parcels and find multiple nearest nodes for destinations
+    # simplify dest_parcels to reduce geometry
+    dest_simp = dest_parcels.simplify(3, preserve_topology=False)
+    # account for multipolygons by creating convex hulls of each parcel
+    convex_hull = dest_simp.convex_hull
+    # convert back to geodataframe
+    dest_simp = gpd.GeoDataFrame({'geometry': convex_hull})
+    # create nested list of vertices to examine for each parcel
+    coords = [list(dest_simp.geometry.exterior[row_id].coords)
+                for row_id in range(dest_simp.shape[0])]
+
+    # initiate lists
+    # nested list of destinations
+    destinations_int = []
+    # list of destinations in string form, each string is all detinations for one parcel
+    destinations_str = []
+    for idx, coord in enumerate(coords):
+        longs = [i for i, j in coord]
+        lats = [j for i, j in coord]
+        dests = ox.distance.nearest_nodes(G, longs, lats)
+        destinations_int.append(dests)
+        destinations_str.append(' '.join(str(x) for x in dests))
+    dest_parcels['nearest_nodes'] = destinations_str
+    # create single list of destinations
+    destinations = [element for innerList in destinations_int for element in innerList]
+
+    # Create the demand attribute and set all equal to 0
+    nx.set_node_attributes(G, values=0, name=G_demand)
+
+    # counting taking too long trying a new approach
+    from collections import Counter
+    #unique_origin_nodes_counts = dict(Counter(origins).items())
+    unique_origin_nodes_counts = dict(zip(list(Counter(origins).keys()), [
+                                      x*-1 for x in Counter(origins).values()]))
+
+    # Create list of unique origins and destinations
+    unique_origin_nodes = np.unique(origins)
+    unique_dest_nodes = np.unique(destinations)
+    unique_dest_nodes_list = [np.unique(nodes) for nodes in destinations_int]
+
+    # determine shared nodes and set demand equal to 0
+    shared_nodes = list(set(unique_origin_nodes) & set(unique_dest_nodes))
+    for x in shared_nodes:
+        unique_origin_nodes_counts[x] = 0
+
+    # add source information (the negative demand value prev. calculated)
+    nx.set_node_attributes(G, unique_origin_nodes_counts, G_demand)
+
+    # Calculate the positive demand: the sink demand
+    positive_demand = sum(unique_origin_nodes_counts.values())*-1
+
+    # TODO: I don't think returning res_points or dest_parcels is neccessary and can be removed
+    return(G, unique_origin_nodes, unique_dest_nodes_list, positive_demand, shared_nodes, res_points, dest_parcels)
 
 
 def random_shortest_path(G='', res_points='', dest_points='', plot=False):
@@ -729,10 +826,10 @@ def plot_aoi(G='', res_parcels='',
     res_parcels.plot(ax=ax, color='antiquewhite', edgecolor='tan')
     resource_parcels.plot(ax=ax, color='cornflowerblue', edgecolor='royalblue')
 
-    #TODO: ADD FEATURE TO HIGHLIGHT NODES - USEFUL IN ORDER TO TRANSLATE RESULTS TO GRAPH QUICKLY WHILE TESTING 
-    # G_gdf_nodes.loc[[57],'geometry'].plot(ax=ax,color='red')
-    # G_gdf_nodes.loc[[56], 'geometry'].plot(ax=ax, color='green')
-    #### END TEST
+    # #TODO: ADD FEATURE TO HIGHLIGHT NODES - USEFUL IN ORDER TO TRANSLATE RESULTS TO GRAPH QUICKLY WHILE TESTING 
+    # G_gdf_nodes.loc[[x],'geometry'].plot(ax=ax,color='red')
+    # # G_gdf_nodes.loc[[56], 'geometry'].plot(ax=ax, color='green')
+    # #### END TEST
 
 
     # option to plot loss of access parcels
@@ -778,7 +875,7 @@ def plot_aoi(G='', res_parcels='',
         for idx, width in enumerate(widths):
 
             # select edges of gdf based on flow value
-            selected_edges = G_gdf_edges[(G_gdf_edges[edge_width] >= bounds[idx]) & (G_gdf_edges[edge_width] < bounds[idx+1])]
+            selected_edges = G_gdf_edges[(G_gdf_edges[edge_width] >= bounds[idx]) & (G_gdf_edges[edge_width] <= bounds[idx+1])]
             sub = ox.graph_from_gdfs(gdf_edges=selected_edges,
                                      gdf_nodes=G_gdf_nodes)
 

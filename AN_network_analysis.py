@@ -35,9 +35,15 @@ food_points = gpd.read_file(food_points_loc)
 # raster = rio.open(inundation_raster)
 ############################################################################################
 
+# # download graph
+# G = mynet.shape_2_graph(aoi_buffer)
+# G = mynet.rename(G=G)
 
-G = mynet.shape_2_graph(aoi_buffer)
-G = mynet.rename(G=G)
+# # save graph
+# mynet.save_2_disk(G=G, path=f'{folder_path}/AN_Graphs', name='AN_Graph')
+
+# load saved graph
+G = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph')
 
 # available edge and node attributes
 edge_attributes = list(list(G.edges(data=True))[0][-1].keys())
@@ -69,32 +75,21 @@ print(f"percentage edges with speed info: {percent_edge_w_speed}")
 print(f"percentage edges with rtype info: {percent_edge_w_rtype}")
 print(f"percentage edges with cap info  : {percent_edge_w_cap}")
 
-
-
-G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points = mynet.nearest_nodes(G=G,
-                                                                                                                        res_points=res_points,
-                                                                                                                        dest_points=food_points, 
-                                                                                                                        G_demand='demand')
-
-
-print(f'total demand: {positive_demand}')
-
 edge_attributes = list(list(G.edges(data=True))[0][-1].keys())
 print(edge_attributes)
-print(len(G.nodes()))
-print(len(G.edges()))
+print(f'number of nodes: {len(G.nodes())}')
+print(f'number of edges: {len(G.edges())}')
 
 output = mynet.max_flow_parcels(G=G, res_points=res_points, dest_points=food_points,
-                                G_capacity='capacity', G_weight='travel_time', G_demand='demand')
+                                G_capacity='capacity', G_weight='travel_time')
 
 flow_dictionary = output[0]
 cost_of_flow = output[1]
 max_flow = output[2]
 access = output[3]
 
-print(access)
-print(max_flow)
-
+print(f'level of access: {access}')
+print(f'Maximum amount of flow: {max_flow}')
 
 #relate flow dictionary back to DRY graph for plotting purposes
 G_map = nx.DiGraph(G)
