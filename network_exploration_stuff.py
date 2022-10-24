@@ -484,8 +484,8 @@ def nearest_nodes_vertices(G='', res_points='', dest_parcels='', G_demand='deman
     for idx, coord in enumerate(coords):
         # BUG maybe: in BPA, coords has 3 values, AN only has two. Not sure why, should examine, for now built in loop to bypass
         if len(coord[0]) == 2:
-        longs = [i for i, j in coord]
-        lats = [j for i, j in coord]
+            longs = [i for i, j in coord]
+            lats = [j for i, j in coord]
         elif len(coord[0]) == 3:
             longs = [i for i, j, z in coord]
             lats = [j for i, j, z in coord]
@@ -672,7 +672,7 @@ def min_cost_flow_parcels(G='', res_points='', dest_points='', G_demand='demand'
         return None, None
 
 
-def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity', G_weight='travel_time', G_demand='demand'):
+def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity', G_weight='travel_time', G_demand='demand', dest_method='single', dest_parcels=None, ignore_capacity=False):
     '''
     Find maximum flow with minimum cost of a network between residential parcels and a given resource.
     
@@ -685,7 +685,6 @@ def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity',
     is equal to the number of residential parcels that are close to that intersection. This way the maximum flow ends up being the maximum number
     of households.
 
-
     :param G: Graph network. Will be converted to DiGraph in function
     :type G: networkx.Graph [Multi, MultiDi, Di]
     :param res_points: Point locations of all of the residential parcels
@@ -696,6 +695,12 @@ def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity',
     :type G_capacity: string
     :param G_weight: name of attribute in G refering to edge weights, *Default='travel_time'* 
     :type G_weight: string  
+    :param dest_method: either multiple or single, determines snapping mechanism for destination points, if it uses multiple vertices or just the nearest vertice
+    :type dest_method: string
+    :param dest_parcels: If dest_method =='multiple', need the destination resource parcels as an input
+    :type dest_parcels: geopandas.GeoDataFrame
+    :param ignore_capacity: if True, road link capacities will be set to infinity. If False, original road capacities are used
+    :type ignore_capacity: bool
     :returns: 
         - **flow_dictionary**, dictionary of dictionaries keyed by nodes for edge flows
         - **cost_of_flow**, integer, total cost of all flow. If weight/cost is travel time, this is the total time for everyone to reach the resource (seconds).
@@ -709,36 +714,78 @@ def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity',
     # TODO factor in check of parallel edges. For now, just convert to digraph
     G = nx.DiGraph(G)
 
-    # TODO: examine if ignoring capcities will be needed to test max flow 
-    # ignore_capacity=True
-    # if ignore_capacity is True:
-    #     nx.set_edge_attributes(G, 999999999999, name=G_capacity)
+    # Based on input, change capacities 
+    if ignore_capacity is True:
+        nx.set_edge_attributes(G, 999999999999, name=G_capacity)
 
     # Travel times must be whole numbers - just round values
     for x in G.edges:
         G.edges[x][G_weight] = round(G.edges[x][G_weight])
 
-    # Find the source and sink demands and append to graph G
-    G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points = nearest_nodes(
-        G=G, res_points=res_points, dest_points=dest_points, G_demand=G_demand)
+    if dest_method == 'single':
+        # Find the source and sink demands and append to graph G
+        G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points = nearest_nodes(
+            G=G, res_points=res_points, dest_points=dest_points, G_demand=G_demand)
 
-    # add artifical source node
-    G.add_nodes_from([(0, {G_demand: positive_demand*-1})])
-    # add edge from artifical source node to real source nodes with 0 weight and capacity equal to demand
-    sums=0
-    for unique_node in unique_origin_nodes:
-        sums -= G.nodes[unique_node][G_demand]
-        kwargs = {f"{G_weight}": 0, f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}  # TODO: KWARGS
-        G.add_edge(0, unique_node, **kwargs)
-        # since we added an artificial source node, all original source nodes must have a zero demand
-        G.nodes[unique_node][G_demand]=0
-        
-    # create artificial sink node 
-    G.add_nodes_from([(99999999, {G_demand: positive_demand})])
-    # add edges from sinks to this artificial node
-    for x in unique_dest_nodes:
-        kwargs={f"{G_weight}":0}
-        G.add_edge(x, 99999999, **kwargs)
+        # add artifical source node
+        G.add_nodes_from([(0, {G_demand: positive_demand*-1})])
+        # add edge from artifical source node to real source nodes with 0 weight and capacity equal to demand
+        sums=0
+        for unique_node in unique_origin_nodes:
+            sums -= G.nodes[unique_node][G_demand]
+            kwargs = {f"{G_weight}": 0, f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}  # TODO: KWARGS
+            G.add_edge(0, unique_node, **kwargs)
+            # since we added an artificial source node, all original source nodes must have a zero demand
+            G.nodes[unique_node][G_demand]=0
+            
+        # create artificial sink node 
+        G.add_nodes_from([(99999999, {G_demand: positive_demand})])
+        # add edges from sinks to this artificial node
+        for x in unique_dest_nodes:
+            kwargs={f"{G_weight}":0}
+            G.add_edge(x, 99999999, **kwargs)
+    
+    elif dest_method == 'multiple':
+        # Find the source and sink demands and append to graph G
+        G, unique_origin_nodes, unique_dest_nodes_list, positive_demand, shared_nodes, res_points, dest_parcels = nearest_nodes_vertices(G=G, 
+                    res_points=res_points, dest_parcels=dest_parcels, G_demand=G_demand)
+        # add artifical source node
+        G.add_nodes_from([(0, {G_demand: positive_demand*-1})])
+        # add edge from artifical source node to real source nodes with 0 weight and capacity equal to demand
+        sums=0
+        for unique_node in unique_origin_nodes:
+            sums -= G.nodes[unique_node][G_demand]
+            kwargs = {f"{G_weight}": 0, f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}  # TODO: KWARGS
+            G.add_edge(0, unique_node, **kwargs)
+            # since we added an artificial source node, all original source nodes must have a zero demand
+            G.nodes[unique_node][G_demand]=0
+
+        # add the super_sink that everything goes to 
+        G.add_nodes_from([(99999999, {G_demand: positive_demand})])
+
+        # identify the destination nodes, and create artifical sink edges
+        # need to relate the nodes that are nearest to corners of parcels with the dest_points to associate the appropriate capacity to 
+        for idx, dest_parcel in dest_parcels.iterrows():
+            dest_node = dest_points[dest_points.geometry.within(dest_parcel.geometry)]
+            #since we could have multiple dest nodes within a single boundary (multiple resources located at same parcel) need to iterate through dest_node
+            for i, node in dest_node.iterrows():
+                # add the dest node to the graph using OSMID as its ID
+                # TODO: explore option about plotting with physical lines
+                # x = node.geometry.x
+                # y = node.geometry.y
+                # G.add_nodes_from([(node['osmid'], {'demand': 0, 'x':x, 'y':y})])
+                G.add_nodes_from([(node['osmid'], {G_demand: 0})])
+
+                # add links from nearest intersections to parcel centroid
+                for nearest_intersection in unique_dest_nodes_list[idx]:
+                    kwargs = {G_weight: 0, G_capacity: 999999999}  # TODO: KWARGS
+                    G.add_edge(nearest_intersection, node['osmid'], **kwargs)
+
+                # add link from parcel centroid to super sink
+                # TODO: This is where I can specifically add capacities for each specific grocery store
+                # FOR NOW: just setting capacity to a high amount 
+                kwargs = {G_weight: 0, G_capacity: 999999999}
+                G.add_edge(node['osmid'], 99999999, **kwargs)
 
 
     # run the max_flow_min_cost function to retrieve FlowDict
@@ -750,6 +797,7 @@ def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity',
                                          _s=0,
                                          _t=99999999,
                                          capacity=G_capacity)
+                                  
     if max_flow == sums:
         access = 'Complete'
     else:
@@ -832,8 +880,9 @@ def plot_aoi(G='', res_parcels='',
     resource_parcels.plot(ax=ax, color='cornflowerblue', edgecolor='royalblue')
 
     # #TODO: ADD FEATURE TO HIGHLIGHT NODES - USEFUL IN ORDER TO TRANSLATE RESULTS TO GRAPH QUICKLY WHILE TESTING 
-    # G_gdf_nodes.loc[[x],'geometry'].plot(ax=ax,color='red')
-    # # G_gdf_nodes.loc[[56], 'geometry'].plot(ax=ax, color='green')
+    # G_gdf_nodes.loc[[6016], 'geometry'].plot(ax=ax, color='green')
+    # G_gdf_nodes.loc[[10727], 'geometry'].plot(ax=ax, color='green')
+    # G_gdf_nodes.loc[[7196], 'geometry'].plot(ax=ax, color='green')
     # #### END TEST
 
 
@@ -846,7 +895,7 @@ def plot_aoi(G='', res_parcels='',
     # plot background light gray roads
     ox.plot.plot_graph(G,
                        ax=ax,
-                       node_size=0,
+                       node_size=5, node_color='black',
                        edge_color='lightgray',
                        show=False,
                        edge_linewidth=1,
@@ -881,16 +930,17 @@ def plot_aoi(G='', res_parcels='',
 
             # select edges of gdf based on flow value
             selected_edges = G_gdf_edges[(G_gdf_edges[edge_width] >= bounds[idx]) & (G_gdf_edges[edge_width] <= bounds[idx+1])]
-            sub = ox.graph_from_gdfs(gdf_edges=selected_edges,
-                                     gdf_nodes=G_gdf_nodes)
-
-            ox.plot.plot_graph(sub,
-                               ax=ax,
-                               node_size=0,
-                               edge_color='black',
-                               show=False,
-                               edge_linewidth=width,
-                               bbox=total_bounds)
+            if len(selected_edges) > 0:
+                sub = ox.graph_from_gdfs(gdf_edges=selected_edges,
+                                        gdf_nodes=G_gdf_nodes)
+                
+                ox.plot.plot_graph(sub,
+                                ax=ax,
+                                node_size=0,
+                                edge_color='black',
+                                show=False,
+                                edge_linewidth=width,
+                                bbox=total_bounds)
 
     # optional plot inundation raster
     if inundation is None:
