@@ -42,41 +42,68 @@ res_points = gpd.read_file(res_points_loc)
 aoi_area = f'{folder_path}/AN_Boundary/AN_Boundary.shp'
 aoi_buffer = f'{folder_path}/AN_Boundary/AN_Boundary_3km.shp'
 
+G = mynet.read_graph_from_disk(
+    path=f'{folder_path}/AN_Graphs', name='AN_Graph')
+
+
+G, unique_origin_nodes, unique_dest_nodes_list, positive_demand, shared_nodes, res_points, dest_parcels = mynet.nearest_nodes_vertices(G=G,
+                                                                                                                                 res_points=res_points, dest_parcels=food_parcels, G_demand='demand')
+
+
+       # add the super_sink that everything goes to
+#G.add_nodes_from([(99999999, {'demand': positive_demand})])
+
+for idx, dest_parcel in food_parcels.iterrows():
+    dest_node = food_points[food_points.geometry.within(dest_parcel.geometry)]
+    #since we could have multiple dest nodes within a single boundary (multiple resources located at same parcel) need to iterate through dest_node
+    for i, node in dest_node.iterrows():
+        x = node.geometry.x
+        y = node.geometry.y
+        # add the dest node to the graph using OSMID as its ID
+        G.add_nodes_from([(node['osmid'], {'demand': 0, 'x':x, 'y':y})])
 
 
 
+        for nearest_intersection in unique_dest_nodes_list[idx]:
+            kwargs = {"weight": 0, "capacity": 1000}  # TODO: KWARGS
+            G.add_edge(nearest_intersection, node['osmid'], **kwargs)
+
+
+
+mynet.plot_aoi(G=G, res_parcels=res_parcels, resource_parcels=res_parcels)
+plt.show()
 ######################################################################################
 
 
-G = mynet.shape_2_graph(aoi_buffer)
-G = mynet.rename(G=G)
+# G = mynet.shape_2_graph(aoi_buffer)
+# G = mynet.rename(G=G)
 
-# # simplify food_parcels
-food_parcels_simp = food_parcels.simplify(3, preserve_topology=False)
+# # # simplify food_parcels
+# food_parcels_simp = food_parcels.simplify(3, preserve_topology=False)
 
-# account for multipolygons by creating convex hulls of each parcel
-convex_hull = food_parcels_simp.convex_hull
-food_parcels1 = gpd.GeoDataFrame({'geometry': convex_hull})
+# # account for multipolygons by creating convex hulls of each parcel
+# convex_hull = food_parcels_simp.convex_hull
+# food_parcels1 = gpd.GeoDataFrame({'geometry': convex_hull})
 
 
-coords = [list(food_parcels1.geometry.exterior[row_id].coords) for row_id in range(food_parcels1.shape[0])]
+# coords = [list(food_parcels1.geometry.exterior[row_id].coords) for row_id in range(food_parcels1.shape[0])]
 
-# for coord in coords:
-#     print(len(coord))
-#     print(coord)
-#     x = [i for i,j in coord]
-#     y = [j for i,j in coord]
-#     print(x)
-#     print(y)
+# # for coord in coords:
+# #     print(len(coord))
+# #     print(coord)
+# #     x = [i for i,j in coord]
+# #     y = [j for i,j in coord]
+# #     print(x)
+# #     print(y)
 
-destinations_int = []
-destinations_str = []
-for idx, coord in enumerate(coords):
-    longs = [i for i, j in coord]
-    lats = [j for i, j in coord]
-    dests = ox.distance.nearest_nodes(G, longs, lats)
-    destinations_int.append(dests)
-    destinations_str.append(' '.join(str(x) for x in dests))
+# destinations_int = []
+# destinations_str = []
+# for idx, coord in enumerate(coords):
+#     longs = [i for i, j in coord]
+#     lats = [j for i, j in coord]
+#     dests = ox.distance.nearest_nodes(G, longs, lats)
+#     destinations_int.append(dests)
+#     destinations_str.append(' '.join(str(x) for x in dests))
 
 
 
