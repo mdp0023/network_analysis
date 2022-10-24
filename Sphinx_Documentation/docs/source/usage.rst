@@ -66,6 +66,10 @@ Available Functions
 
 |
 
+.. autofunction:: network_exploration_stuff.nearest_nodes_vertices
+
+|
+
 .. autofunction:: network_exploration_stuff.flow_decomposition
 
 |

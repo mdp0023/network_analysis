@@ -17,7 +17,7 @@
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="API" href="API.html" />
-    <link rel="prev" title="Welcome to Network Exploration’s documentation!" href="index.html" /> 
+    <link rel="prev" title="Walkthrough and Quickstart" href="Walkthrough%20and%20Quickstart.html" /> 
   </head><body>
     <div class="related" role="navigation" aria-label="related navigation">
       <h3>Navigation</h3>
@@ -32,7 +32,7 @@
           <a href="API.html" title="API"
              accesskey="N">next</a> |</li>
         <li class="right" >
-          <a href="index.html" title="Welcome to Network Exploration’s documentation!"
+          <a href="Walkthrough%20and%20Quickstart.html" title="Walkthrough and Quickstart"
              accesskey="P">previous</a> |</li>
         <li class="nav-item nav-item-0"><a href="index.html">Network Exploration 0.1 documentation</a> &#187;</li>
         <li class="nav-item nav-item-this"><a href="">Usage</a></li> 
@@ -57,7 +57,7 @@
 <h2>Available Functions<a class="headerlink" href="#available-functions" title="Permalink to this headline">¶</a></h2>
 <dl class="py function">
 <dt class="sig sig-object py" id="network_exploration_stuff.shape_2_graph">
-<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">shape_2_graph</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.shape_2_graph" title="Permalink to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">shape_2_graph</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.shape_2_graph" title="Permalink to this definition">¶</a></dt>
 <dd><p>Extracts road network from shapefile.</p>
 <p>This function takes an input path to a .shp file (assuming the associated .shp, .shx, .dbf, etc. are all in the same folder)
 and extracts/returns the OpenStreetMap road network. This function automatically pulls the speed and travel time information,
@@ -266,7 +266,7 @@ that can go to any single resource location. <strong>This feature also needs fur
 </div>
 <dl class="py function">
 <dt class="sig sig-object py" id="network_exploration_stuff.max_flow_parcels">
-<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">max_flow_parcels</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">res_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dest_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_capacity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'capacity'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'travel_time'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_demand</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'demand'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.max_flow_parcels" title="Permalink to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">max_flow_parcels</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">res_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dest_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_capacity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'capacity'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'travel_time'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_demand</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'demand'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dest_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'single'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dest_parcels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_capacity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.max_flow_parcels" title="Permalink to this definition">¶</a></dt>
 <dd><p>Find maximum flow with minimum cost of a network between residential parcels and a given resource.</p>
 <p>Unlike <a class="reference internal" href="#network_exploration_stuff.min_cost_flow_parcels" title="network_exploration_stuff.min_cost_flow_parcels"><code class="xref py py-func docutils literal notranslate"><span class="pre">min_cost_flow_parcels()</span></code></a>, this function calculates the maximum flow from all of the residential parcels to a given resource.
 Meaning, this function is independent of whether or not every residential parcel can actually reach a resource.
@@ -283,6 +283,9 @@ of households.</p>
 <li><p><strong>dest_points</strong> (<em>geopandas.GeoDataFrame</em>) – Point locations of all of the resources the residential parcels are to be routed to</p></li>
 <li><p><strong>G_capacity</strong> (<em>string</em>) – name of attribute in G refering to edge capacities, <em>Default=’capacity’</em></p></li>
 <li><p><strong>G_weight</strong> (<em>string</em>) – name of attribute in G refering to edge weights, <em>Default=’travel_time’</em></p></li>
+<li><p><strong>dest_method</strong> (<em>string</em>) – either multiple or single, determines snapping mechanism for destination points, if it uses multiple vertices or just the nearest vertice</p></li>
+<li><p><strong>dest_parcels</strong> (<em>geopandas.GeoDataFrame</em>) – If dest_method ==’multiple’, need the destination resource parcels as an input</p></li>
+<li><p><strong>ignore_capacity</strong> (<em>bool</em>) – if True, road link capacities will be set to infinity. If False, original road capacities are used</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
@@ -365,12 +368,9 @@ of households.</p>
 </div>
 <dl class="py function">
 <dt class="sig sig-object py" id="network_exploration_stuff.inundate_network">
-<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">inundate_network</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">CRS</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">32614</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inundation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.inundate_network" title="Permalink to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">inundate_network</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inundation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.inundate_network" title="Permalink to this definition">¶</a></dt>
 <dd><p>Create a new graph network based on the imapct of an inundation layer.</p>
-<p>Currently - An inundation layer is overlayed on a graph network. The maximum depth that intersects each road segment (within a given 
-distance based on the type of road, <strong>this needs to become a parameter and should be customizable</strong>). That maximum depth is then equated 
-to a decrease in speed and/or capacity on that entire road segment (<strong>also needs attention</strong> because water on a road segment might only impact
-poritions of that segment).</p>
+<p>Currently - An inundation layer is overlayed on a graph network. The maximum depth that intersects each road segment (within a given distance based on the type of road, <strong>this needs to become a parameter and should be customizable</strong>). That maximum depth is then equated to a decrease in speed and/or capacity on that entire road segment (<strong>also needs attention</strong> because water on a road segment might only impact poritions of that segment).</p>
 <p>This function adds attributes including:</p>
 <ul class="simple">
 <li><p>max_inundation</p></li>
@@ -379,19 +379,15 @@ poritions of that segment).</p>
 <li><p>inundation_speed_kph</p></li>
 <li><p>inundation_travel_time</p></li>
 </ul>
-<p><strong>Important Note</strong> - There are a number of methodologies in which this can be accomplished, and others need to be explored further. The 
-documenation listed must be updated regularly whenever changes are made to reflect current options of this function. Just a few things that need
-to be addressed include:</p>
+<p><strong>Important Note</strong> - There are a number of methodologies in which this can be accomplished, and others need to be explored further. The documenation listed must be updated regularly whenever changes are made to reflect current options of this function. Just a few things that need to be addressed include:</p>
 <ul class="simple">
-<li><p>customizable road widths</p></li>
 <li><p>customizable impacts - based on the literature</p></li>
 <li><p>impact on partial segments compared to entire segment</p></li>
 </ul>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>G</strong> (<em>networkx.Graph</em><em> [</em><em>Multi</em><em>, </em><em>MultiDi</em><em>, </em><em>Di</em><em>]</em>) – The graph network</p></li>
-<li><p><strong>CRS</strong> (<em>int</em>) – Coordinate reference system to conduct overlay in. <em>Default=32614, eqivalent to UTM14N</em></p></li>
+<li><p><strong>G</strong> (<em>networkx.Graph</em><em> [</em><em>Multi</em><em>, </em><em>MultiDi</em><em>, </em><em>Di</em><em>]</em>) – The graph network. Should have projected coordinates.</p></li>
 <li><p><strong>path</strong> (<em>string</em>) – File path to save output graph network to.</p></li>
 <li><p><strong>inundation</strong> (<em>string</em>) – File path to inundation raster .tif</p></li>
 </ul>
@@ -420,6 +416,43 @@ to be addressed include:</p>
 <li><p><strong>G</strong> (<em>networkx.Graph</em><em> [</em><em>Multi</em><em>, </em><em>MultiDi</em><em>, </em><em>Di</em><em>]</em>) – Graph network</p></li>
 <li><p><strong>res_points</strong> (<em>geopandas.GeoDataFrame</em>) – Point locations of all of the residential parcels</p></li>
 <li><p><strong>dest_points</strong> (<em>geopandas.GeoDataFrame</em>) – Point locations of all of the resources the residential parcels are to be routed to</p></li>
+<li><p><strong>G_demand</strong> (<em>string</em>) – name of attribuet in G refering to node demand, <em>Default=’demand</em></p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>G</strong>, <em>networkx.DiGraph</em> with G_demand attribute showing source values (negative demand)</p></li>
+<li><p><strong>unique_origin_nodes</strong>, <em>lst</em> of unique origin nodes</p></li>
+<li><p><strong>unique_dest_nodes</strong>, <em>lst</em> of unqiue destination nodes</p></li>
+<li><p><strong>positive_demand</strong>, <em>int</em> of the total positive demand across the network. <strong>Does not include the residents that share a closest intersection with a resource parcel.</strong></p></li>
+<li><p><strong>Shared_nodes</strong>, <em>lst</em> of nodes that res and destination parcels share same nearest</p></li>
+<li><p><strong>res_points</strong>, <em>geopandas.GeoDataFrame</em>, residential points with appended attribute of ‘nearest_node’</p></li>
+<li><p><strong>dest_points</strong>, <em>geopandas.GeoDataFrame</em>, destination/sink points with appended attribute of ‘nearest_node’</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<div class="line-block">
+<div class="line"><br /></div>
+</div>
+<dl class="py function">
+<dt class="sig sig-object py" id="network_exploration_stuff.nearest_nodes_vertices">
+<span class="sig-prename descclassname"><span class="pre">network_exploration_stuff.</span></span><span class="sig-name descname"><span class="pre">nearest_nodes_vertices</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">G</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">res_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dest_parcels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G_demand</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'demand'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#network_exploration_stuff.nearest_nodes_vertices" title="Permalink to this definition">¶</a></dt>
+<dd><p>MODIFICATION OF NEAREST_NODES FUNCTION TO SNAP DEST PARCELS TO MULTIPLE NODES</p>
+<p>Return Graph with demand attribute based on snapping sources/sinks to nearest nodes (intersections).</p>
+<p>The purpose of this function is take a series of input locations and determine the nearest nodes (intersections) within a Graph network. It takes this information to create source and sink information.</p>
+<p><strong>Important Note</strong>: The output graph has an attribute labeled G_demand, which shows the number of closest residential parcels to each unique intersection. Because these are considered sources, they have a negative demand. Sink locations, or the intersections that are closest to the the dest_points, will not have a demand value (G_demand == 0) because we do not know how much flow is going to that node until after a min-cost flow algorithm is run. I.e., to route properly, we end up creating an artifical sink and then decompose the flow to determine how much flow is going to each destination.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>G</strong> (<em>networkx.Graph</em><em> [</em><em>Multi</em><em>, </em><em>MultiDi</em><em>, </em><em>Di</em><em>]</em>) – Graph network</p></li>
+<li><p><strong>res_points</strong> (<em>geopandas.GeoDataFrame</em>) – Point locations of all of the residential parcels</p></li>
+<li><p><strong>dest_parcels</strong> – Parcels of all of the resources the residential parcels are to be routed to</p></li>
 <li><p><strong>G_demand</strong> (<em>string</em>) – name of attribuet in G refering to node demand, <em>Default=’demand</em></p></li>
 </ul>
 </dd>
@@ -572,8 +605,8 @@ to be addressed include:</p>
   </div>
   <div>
     <h4>Previous topic</h4>
-    <p class="topless"><a href="index.html"
-                          title="previous chapter">Welcome to Network Exploration’s documentation!</a></p>
+    <p class="topless"><a href="Walkthrough%20and%20Quickstart.html"
+                          title="previous chapter">Walkthrough and Quickstart</a></p>
   </div>
   <div>
     <h4>Next topic</h4>
@@ -614,7 +647,7 @@ to be addressed include:</p>
           <a href="API.html" title="API"
              >next</a> |</li>
         <li class="right" >
-          <a href="index.html" title="Welcome to Network Exploration’s documentation!"
+          <a href="Walkthrough%20and%20Quickstart.html" title="Walkthrough and Quickstart"
              >previous</a> |</li>
         <li class="nav-item nav-item-0"><a href="index.html">Network Exploration 0.1 documentation</a> &#187;</li>
         <li class="nav-item nav-item-this"><a href="">Usage</a></li> 

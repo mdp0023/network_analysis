@@ -12,7 +12,7 @@
 #
 import os
 import sys
-sys.path.append('/home/mdp0023/Documents/Codes_Projects/network_analysis')
+sys.path.append('/home/mdp0023/Documents/Codes_Projects/Network_Analysis')
 
 
 
