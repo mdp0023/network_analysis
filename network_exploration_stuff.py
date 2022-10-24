@@ -482,8 +482,13 @@ def nearest_nodes_vertices(G='', res_points='', dest_parcels='', G_demand='deman
     # list of destinations in string form, each string is all detinations for one parcel
     destinations_str = []
     for idx, coord in enumerate(coords):
+        # BUG maybe: in BPA, coords has 3 values, AN only has two. Not sure why, should examine, for now built in loop to bypass
+        if len(coord[0]) == 2:
         longs = [i for i, j in coord]
         lats = [j for i, j in coord]
+        elif len(coord[0]) == 3:
+            longs = [i for i, j, z in coord]
+            lats = [j for i, j, z in coord]
         dests = ox.distance.nearest_nodes(G, longs, lats)
         destinations_int.append(dests)
         destinations_str.append(' '.join(str(x) for x in dests))
