@@ -89,16 +89,23 @@ shared_nodes = output[4]
 res_points = output[5] 
 dest_points = output[6]
 
-output = mynet.max_flow_parcels(G=G, res_points=res_points, dest_points=food_points,
-                                G_capacity='capacity', G_weight='travel_time', G_demand='demand')
+output = mynet.max_flow_parcels(G=G, 
+                                res_points=res_points, 
+                                dest_points=food_points,
+                                G_capacity='capacity', 
+                                G_weight='travel_time', 
+                                G_demand='demand',
+                                dest_method='multiple', 
+                                dest_parcels=food_parcels, 
+                                ignore_capacity=False)
 
 flow_dictionary = output[0]
 cost_of_flow = output[1]
 max_flow = output[2]
 access = output[3]
 
-print(access)
-print(max_flow)
+print(f'level of access: {access}')
+print(f'Maximum amount of flow: {max_flow}')
 
 
 #relate flow dictionary back to DRY graph for plotting purposes

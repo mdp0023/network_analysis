@@ -45,6 +45,11 @@ food_points = gpd.read_file(food_points_loc)
 # load saved graph
 G = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph')
 
+G, unique_origin_nodes, unique_dest_nodes_list, positive_demand, shared_nodes, res_points, dest_parcels = mynet.nearest_nodes_vertices(G=G,
+                                                                                                                                       res_points=res_points, dest_parcels=food_parcels, G_demand='demand')
+
+
+
 # available edge and node attributes
 edge_attributes = list(list(G.edges(data=True))[0][-1].keys())
 node_attributes = list(list(G.nodes(data=True))[0][-1].keys())
@@ -80,8 +85,15 @@ print(edge_attributes)
 print(f'number of nodes: {len(G.nodes())}')
 print(f'number of edges: {len(G.edges())}')
 
-output = mynet.max_flow_parcels(G=G, res_points=res_points, dest_points=food_points,
-                                G_capacity='capacity', G_weight='travel_time')
+output = mynet.max_flow_parcels(G=G, 
+                                res_points=res_points, 
+                                dest_points=food_points,
+                                G_capacity='capacity', 
+                                G_weight='travel_time', 
+                                G_demand='demand',
+                                dest_method='multiple', 
+                                dest_parcels=food_parcels, 
+                                ignore_capacity=True)
 
 flow_dictionary = output[0]
 cost_of_flow = output[1]
@@ -98,6 +110,8 @@ for edge in G_map.edges:
     values = {(edge[0], edge[1]): {'dry_flow':
                                    flow_dictionary[edge[0]][edge[1]]}}
     nx.set_edge_attributes(G=G_map, values=values)
+
+# need to convert back to multidigraph to plot properly
 G_map = nx.MultiDiGraph(G_map)
 
 
