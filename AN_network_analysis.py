@@ -93,7 +93,7 @@ output = mynet.max_flow_parcels(G=G,
                                 G_demand='demand',
                                 dest_method='multiple', 
                                 dest_parcels=food_parcels, 
-                                ignore_capacity=True)
+                                ignore_capacity=False)
 
 flow_dictionary = output[0]
 cost_of_flow = output[1]
@@ -114,7 +114,26 @@ for edge in G_map.edges:
 # need to convert back to multidigraph to plot properly
 G_map = nx.MultiDiGraph(G_map)
 
+# flow decomposition test
+output = mynet.flow_decomposition(G=G, 
+                                        res_points=res_points,
+                                        dest_points=food_points, 
+                                        res_parcels=res_parcels, 
+                                        dest_parcels=food_parcels, 
+                                        G_demand='demand', 
+                                        G_capacity='capacity', 
+                                        G_weight='travel_time')
 
-mynet.plot_aoi(G=G_map, res_parcels=res_parcels,
-               resource_parcels=food_parcels, edge_width='dry_flow')
+
+decomposed_paths=output[0]
+sink_insights=output[1]
+res_parcels=output[2]
+dest_parcels=output[3]
+
+res_parcels.plot(column='cost_of_flow', legend=True)
+
+# mynet.plot_aoi(G=G_map, res_parcels=res_parcels,
+#                resource_parcels=food_parcels, edge_width='dry_flow')
 plt.show()
+
+
