@@ -1186,7 +1186,7 @@ def inundate_network(G='', path='', inundation=''):
     return (new_graph)
 
 
-def flow_decomposition(G='', res_points='', dest_points='',res_locs='',dest_locs='', G_demand='demand', G_capacity='capacity', G_weight='travel_time'):
+def flow_decomposition(G='', res_points='', dest_points='',res_parcels='',dest_parcels='', G_demand='demand', G_capacity='capacity', G_weight='travel_time'):
     '''
     Given a network, G, decompose the maximum flow (w/ minimum cost) into individual flow paths.
 
@@ -1205,10 +1205,10 @@ def flow_decomposition(G='', res_points='', dest_points='',res_locs='',dest_locs
     :type res_points: geopandas.GeoDataFrame
     :param dest_points: Point locations of all of the resources the residential parcels are to be routed to
     :type dest_points: geopandas.GeoDataFrame
-    :param res_locs: Polygons of all residential parcels
-    :type res_locs: geopandas.GeoDataFrame
-    :param dest_locs: Polygons of all of a specific destination/resource
-    :type dest_locs: geopandas.GeodataFrame
+    :param res_parcels: Polygons of all residential parcels
+    :type res_parcels: geopandas.GeoDataFrame
+    :param dest_parcels: Polygons of all of a specific destination/resource
+    :type dest_parcels: geopandas.GeodataFrame
     :param G_demand: name of attribuet in G refering to node demand, *Default='demand*
     :type G_demand: string
     :param G_capacity: name of attribute in G refering to edge capacities, *Default='capacity'* 
@@ -1229,11 +1229,11 @@ def flow_decomposition(G='', res_points='', dest_points='',res_locs='',dest_locs
     
     # Run max_flow_parcels to get flow dictionary
     flow_dict, flow_cost, max_flow, access = max_flow_parcels(G=G, res_points=res_points, dest_points=dest_points, G_capacity=G_capacity, G_weight=G_weight, G_demand=G_demand)
-    
+
     # Travel times must be whole numbers -  round values if not whole numbers
     for x in G.edges:
         G.edges[x][G_weight] = round(G.edges[x][G_weight])
-
+    
     #Run nearest_nodes to get unique origins and destinations
     G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points = nearest_nodes(
         G=G, res_points=res_points, dest_points=dest_points, G_demand=G_demand)
@@ -1260,10 +1260,10 @@ def flow_decomposition(G='', res_points='', dest_points='',res_locs='',dest_locs
         kwargs={f"{G_weight}":0}
         G.add_edge(x, 99999999, **kwargs)
 
-
-    # Create intermediate graph from max_flow_parcels dictionary, consisting of only edges that have a flod going across them
+    # Create intermediate graph from max_flow_parcels dictionary, consisting of only edges that have a flow going across them
     # Set the allowable flow of each edge in intermediate graph to the flow going across that edge in original max_flow_parcels solution
     G_inter = nx.DiGraph()
+    G=nx.DiGraph(G)
     for i in flow_dict:
         for j in flow_dict[i]:
             if flow_dict[i][j] >0:
@@ -1311,13 +1311,13 @@ def flow_decomposition(G='', res_points='', dest_points='',res_locs='',dest_locs
         sink = path[-2]
         if source in decomposed_paths.keys():
             decomposed_paths[source]['Sink'].append(sink)
-            decomposed_paths[source]['Path'].append(path[1:-1])
+            decomposed_paths[source]['Path'].append([' '.join(map(str, l)) for l in [path[1:-1]]])
             decomposed_paths[source]['Flow'].append(limiting_flow)
             decomposed_paths[source]['Cost Per Flow'].append(cost)
             decomposed_paths[source]['Number of Unique Paths'] += 1
             decomposed_paths[source]['Total Flow'] += limiting_flow  
         else:
-            decomposed_paths[source] = {'Source': [source], 'Sink': [sink], 'Path': [path[1:-1]],'Flow': [limiting_flow], 'Cost Per Flow': [cost],'Number of Unique Paths':1, 'Total Flow': limiting_flow}
+            decomposed_paths[source] = {'Source': [source], 'Sink': [sink], 'Path': [' '.join(map(str, l)) for l in [path[1:-1]]], 'Flow': [limiting_flow], 'Cost Per Flow': [cost], 'Number of Unique Paths': 1, 'Total Flow': limiting_flow}
 
         # Add sink insights, keyed by the sink   
         if sink in sink_insights.keys():
@@ -1325,68 +1325,97 @@ def flow_decomposition(G='', res_points='', dest_points='',res_locs='',dest_locs
             sink_insights[sink]['Total flow w/o walking']+= limiting_flow
             sink_insights[sink]['Total flow w/ walking']+= limiting_flow
         else:
-            sink_insights[sink] = {'Number of unique paths': 1, 'Total flow w/o walking': limiting_flow, 'Total flow w/ walking': limiting_flow + len(
-            res_points.loc[res_points['nearest_node'] == sink])}
+            sink_insights[sink] = {'Number of unique paths': 1, 'Total flow w/o walking': limiting_flow, 'Total flow w/ walking': limiting_flow + len(res_points.loc[res_points['nearest_node'] == sink])}
     # End flow decomposition algorithm
 
     # Begin relating decomposition results to outputs 
+    # 1. first determine the unique origin nodes that don't have a path and mark accordingly
+    # 2. Find all the unique origin nodes with a single path to a single destination, mark accordingly
+    # 3. Find all unique origin nodes with mulitple paths to multiple/same desitnation, mark accordingly
 
-    # Relating origin results:
+    # 1. Nodes with no path 
+    nodes_to_pop = []
     for node in unique_origin_nodes:
         # Create empty lists of possible sinks, paths, and cost_per_flow
-        sinks=[]
-        paths=[]
-        cost_per_flow=[]
         # extract decomposition information -> if decomp_info doesn't exist, that means unique origin node has NO path to sink
         try:
             decomp_info = decomposed_paths[node]
         except: 
             missing_paths = True
         else:
-            decomp_info = decomposed_paths[node]
             missing_paths=False
         # for each path from a unique origin to any sink, need to append lists of possible attributes
         if missing_paths is True:
             # If no decomp_info, source node is not serviceable -> unreachable
             res_points.loc[res_points['nearest_node'] == node,['service']] = 'no'
-            res_points.loc[res_points['nearest_node']
-                           == node, ['cost_of_flow']] = np.NaN
-
-        else:
-            # If multiple paths from one source to sink exist, need to create lists that contain a representative distribution of possible paths
-            for idx, pathway in enumerate(decomp_info['Sink']):
-                flow=decomp_info['Flow'][idx]
-                sinks.extend([decomp_info['Sink'][idx]] for x in range(flow))
-                path = decomp_info['Path'][idx]
-                path= ' '.join(str(e) for e in path)
-                paths.extend(path for x in range(flow))
-                cost_per_flow.extend([decomp_info['Cost Per Flow'][idx]] for x in range(flow))
+            res_points.loc[res_points['nearest_node'] == node, ['cost_of_flow']] = np.NaN
+            nodes_to_pop.append(node)
             
-            # Create subset of res_points that have the source node as their nearest_node
-            subset = res_points.loc[res_points['nearest_node'] == node]
 
-            # for each of the res_points in the subset, randomly select an appropriate sink, path, and cost
-            for index, res in subset.iterrows():
-                i=random.choice(range(len(sinks)))
-                sink_pop = sinks.pop(i)
-                path_pop = paths.pop(i)
-                cost_pop = cost_per_flow.pop(i)
+    # 2. Nodes with a single path
+    unique_origin_nodes = unique_origin_nodes.tolist()
+    for node in nodes_to_pop:
+        unique_origin_nodes.remove(node)
 
-                # Append the res_points geodataframe with the appropriate information include:
-                    # The sink that resident goes to
-                    # the path that resident takes 
-                    # the cost of that path
-                    # that it is NaN walkable -> see shared nodes
-                    # that it is serviceable -> can reach destination
-                res_points.loc[res_points['PROP_ID']==res['PROP_ID'],['sink']] = sink_pop
-                res_points.loc[res_points['PROP_ID']==res['PROP_ID'],['path']] = [path_pop]
-                res_points.loc[res_points['PROP_ID'] ==
-                            res['PROP_ID'],['cost_of_flow']] = cost_pop
-                res_points.loc[res_points['PROP_ID'] ==
-                            res['PROP_ID'],['walkable?']] = np.NaN
-                res_points.loc[res_points['PROP_ID'] ==
-                            res['PROP_ID'],['service']] = 'yes'
+    # create subset of decomposed_paths whose number of unique paths is equal to 1
+    decomp_subset = dict((k, decomposed_paths[k]) for k in unique_origin_nodes if decomposed_paths[k]['Number of Unique Paths'] == 1)
+
+    # convert decomp_subset to dataframe
+    decomp_subset_df = pd.DataFrame.from_dict(decomp_subset, orient='index',columns=['Source', 
+                                                                                        'Sink', 
+                                                                                        'Path',
+                                                                                        'Flow', 
+                                                                                        'Cost Per Flow',
+                                                                                        'Number of Unique Paths', 
+                                                                                        'Total Flow']).reset_index()
     
+    # set the rows the appropriate dtypes before merge
+    decomp_subset_df['source'] = decomp_subset_df['Source'].str[0]
+    decomp_subset_df['sink'] = decomp_subset_df['Sink'].str[0]
+    decomp_subset_df['cost_of_flow'] = decomp_subset_df['Cost Per Flow'].str[0]
+    decomp_subset_df['walkable?'] = np.NaN
+    decomp_subset_df['service'] = 'yes'
+    decomp_subset_df['path'] = decomp_subset_df['Path'].str[0]
+
+    # Merge the appropriate attributes
+    res_points = res_points.merge(decomp_subset_df[['source','sink','cost_of_flow','walkable?','service','path']], how='left', left_on='nearest_node', right_on='source')
+
+    # combine similar columns and remove unnecessary ones
+    res_points['cost_of_flow'] = res_points['cost_of_flow_y'].combine_first(res_points['cost_of_flow_x'])
+    res_points['service'] = res_points['service_y'].combine_first(res_points['service_x'])
+    res_points.drop(columns=['cost_of_flow_y','cost_of_flow_x','service_y','service_x'], inplace=True)
+
+    # 3. Nodes with multiple paths
+    # create subset of decomposed_paths whose number of unique paths is greater than 1
+    decomp_subset = dict((k, decomposed_paths[k]) for k in unique_origin_nodes if decomposed_paths[k]['Number of Unique Paths'] > 1)
+
+    # convert decomp_subset to dataframe
+    decomp_subset_df = pd.DataFrame.from_dict(decomp_subset, orient='index', columns=['Source',
+                                                                                      'Sink',
+                                                                                      'Path',
+                                                                                      'Flow',
+                                                                                      'Cost Per Flow',
+                                                                                      'Number of Unique Paths',
+                                                                                      'Total Flow']).reset_index()
+
+    # for each unique origin that has multiple paths, extract each unique sink path and flow
+    for ix, row in decomp_subset_df.iterrows():
+        for idx, pathway in enumerate(row['Path']):
+            flow = int(row['Flow'][idx])
+            source = int(row['Source'][0])
+            sink = row['Sink'][idx]
+            path = pathway
+            cost_per_flow = row['Cost Per Flow'][idx]
+
+            # randomly select res_points with same source and no path information
+            # the syntax for query is a bit odd: needed @ to reference variable and find nans using !=
+            query = res_points.query("nearest_node == @source and sink != sink").sample(n=flow).index
+            res_points.loc[query, ['sink']] = sink
+            res_points.loc[query, ['path']] = path
+            res_points.loc[query, ['cost_of_flow']] = cost_per_flow
+            res_points.loc[query, ['walkable?']] = np.NaN
+            res_points.loc[query, ['service']] = 'yes'
+
     # For shared_nodes, we consider these res_points walkable for sharing the same nearest node
     for node in shared_nodes:
         res_points.loc[res_points['nearest_node'] == node,['walkable?']] = 'yes'
@@ -1412,13 +1441,12 @@ def flow_decomposition(G='', res_points='', dest_points='',res_locs='',dest_locs
             dest_points.loc[dest_points['nearest_node'] == node, ['total_flow_wo_walking']] = total_flow
             dest_points.loc[dest_points['nearest_node'] == node, ['total_flow_w_walking']] += total_flow
 
-    # Sync the res_points with res_locs data
-    res_locs = res_locs.merge(res_points[['PROP_ID','nearest_node','service','sink','path','cost_of_flow','walkable?']], on='PROP_ID')
-    # Sync the dest_points with dest_locs data
-    dest_locs = dest_locs.merge(dest_points[['PROP_ID', 'nearest_node','total_flow_wo_walking','total_flow_w_walking']], on='PROP_ID')
-
+    # Spatial join the res_parcels/res_points and dest_parcels/dest_points data
+    res_parcels = gpd.sjoin(res_parcels,res_points)
+    dest_parcels = gpd.sjoin(dest_parcels, dest_points)
+  
     # return the decomposed paths dict of dict, the sink_insights dict of dict, and the res_locs/dest_locs geodataframes
-    return decomposed_paths, sink_insights, res_locs, dest_locs
+    return decomposed_paths, sink_insights, res_parcels, dest_parcels
 
 
 def shortestPath(origin, capacity_array, weight_array):
