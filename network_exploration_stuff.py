@@ -453,7 +453,7 @@ def nearest_nodes_vertices(G='', res_points='', dest_parcels='', G_demand='deman
         - **Shared_nodes**, *lst* of nodes that res and destination parcels share same nearest 
         - **res_points**, *geopandas.GeoDataFrame*, residential points with appended attribute of 'nearest_node'
         - **dest_parcels**, *geopandas.GeoDataFrame*, destination/sink footprints with appended attribute of 'nearest_node'
-        -- **dest_points**, *geopandas.GeoDataFrame*, destination/sink points with appended attribute of 'nearest_node'
+        - **dest_points**, *geopandas.GeoDataFrame*, destination/sink points with appended attribute of 'nearest_node'
     :rtype: tuple
 
     '''
