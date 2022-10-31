@@ -85,34 +85,34 @@ print(edge_attributes)
 print(f'number of nodes: {len(G.nodes())}')
 print(f'number of edges: {len(G.edges())}')
 
-output = mynet.max_flow_parcels(G=G, 
-                                res_points=res_points, 
-                                dest_points=food_points,
-                                G_capacity='capacity', 
-                                G_weight='travel_time', 
-                                G_demand='demand',
-                                dest_method='multiple', 
-                                dest_parcels=food_parcels, 
-                                ignore_capacity=False)
+# output = mynet.max_flow_parcels(G=G, 
+#                                 res_points=res_points, 
+#                                 dest_points=food_points,
+#                                 G_capacity='capacity', 
+#                                 G_weight='travel_time', 
+#                                 G_demand='demand',
+#                                 dest_method='multiple', 
+#                                 dest_parcels=food_parcels, 
+#                                 ignore_capacity=False)
 
-flow_dictionary = output[0]
-cost_of_flow = output[1]
-max_flow = output[2]
-access = output[3]
+# flow_dictionary = output[0]
+# cost_of_flow = output[1]
+# max_flow = output[2]
+# access = output[3]
 
-print(f'level of access: {access}')
-print(f'Maximum amount of flow: {max_flow}')
+# print(f'level of access: {access}')
+# print(f'Maximum amount of flow: {max_flow}')
 
-#relate flow dictionary back to DRY graph for plotting purposes
-G_map = nx.DiGraph(G)
-# relate
-for edge in G_map.edges:
-    values = {(edge[0], edge[1]): {'dry_flow':
-                                   flow_dictionary[edge[0]][edge[1]]}}
-    nx.set_edge_attributes(G=G_map, values=values)
+# #relate flow dictionary back to DRY graph for plotting purposes
+# G_map = nx.DiGraph(G)
+# # relate
+# for edge in G_map.edges:
+#     values = {(edge[0], edge[1]): {'dry_flow':
+#                                    flow_dictionary[edge[0]][edge[1]]}}
+#     nx.set_edge_attributes(G=G_map, values=values)
 
-# need to convert back to multidigraph to plot properly
-G_map = nx.MultiDiGraph(G_map)
+# # need to convert back to multidigraph to plot properly
+# G_map = nx.MultiDiGraph(G_map)
 
 # flow decomposition test
 output = mynet.flow_decomposition(G=G, 
@@ -122,14 +122,16 @@ output = mynet.flow_decomposition(G=G,
                                         dest_parcels=food_parcels, 
                                         G_demand='demand', 
                                         G_capacity='capacity', 
-                                        G_weight='travel_time')
+                                        G_weight='travel_time',
+                                        dest_method='multiple')
 
 
 decomposed_paths=output[0]
 sink_insights=output[1]
 res_parcels=output[2]
 dest_parcels=output[3]
-
+print(dest_parcels)
+dest_parcels.to_file('/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/test_decomp')
 res_parcels.plot(column='cost_of_flow', legend=True)
 
 # mynet.plot_aoi(G=G_map, res_parcels=res_parcels,
