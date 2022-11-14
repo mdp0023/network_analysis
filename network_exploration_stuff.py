@@ -13,6 +13,7 @@ import numpy as np
 from scipy.stats import iqr
 from rasterio.plot import show
 import matplotlib.pylab as pl
+from matplotlib import pyplot
 from matplotlib.colors import ListedColormap
 from rasterstats import zonal_stats
 from matplotlib_scalebar.scalebar import ScaleBar
@@ -20,6 +21,13 @@ import random
 import copy
 import heapq
 from collections import defaultdict
+import rasterio
+import rasterio.mask
+import fiona
+import shapely
+import time
+from multiprocessing.pool import ThreadPool as  Pool
+import math
 
 # set some panda display options
 pd.set_option('display.max_columns', None)
@@ -49,7 +57,13 @@ pd.set_option('display.max_columns', None)
 #   this involves manually skipping oneway as well (i think b/c its bool)
 #   this was needed b/c  inundation_G load not preserve datatypes
 # TODO: update shortest path and path to functions to the new modified ones - much quicker
-
+# TODO: add impact of rainfall intensity on reduction of speed and intensity
+    # light rain reduces free flow speed 2-13% and capacity 4-11%
+    # heavy rain reduces speed 3-16% and capacity 10-30%
+    # see these sites for info: 
+    # https://engrxiv.org/preprint/view/1322/2765
+    # https://ops.fhwa.dot.gov/weather/best_practices/AMS2003_TrafficFlow.pdf 
+    # https://ops.fhwa.dot.gov/weather/q1_roadimpact.htm#:~:text=Light%20rain%20can%20decrease%20freeway,12%20percent%20in%20low%20visibility.
 
 # OTHER TODOS
 # TODO: Need to use different method to determine random node variable name in the min cost flow function
@@ -116,8 +130,23 @@ def shape_2_graph(source):
         boundary['geometry'][0],
         network_type='drive')
 
+    # dictionary of highway speeds in kph
+    hwy_speeds = {"motorway": 120,
+                  "motorway_link": 120,
+                  "trunk": 120,
+                  "trunk_link": 120,
+                  "primary": 65,
+                  "primary_link": 65,
+                  "secondary": 50,
+                  "secondary_link": 50,
+                  "tertiary": 50,
+                  "tertiary_link": 50,
+                  "residential": 40,
+                  "minor": 40,
+                  "unclassified": 40,
+                  "living_street": 40}
     # add edge speeds where they exist
-    ox.add_edge_speeds(G)
+    ox.add_edge_speeds(G, hwy_speeds=hwy_speeds, fallback=30)
     # add travel times 
     ox.add_edge_travel_times(G)
 
@@ -532,6 +561,7 @@ def nearest_nodes_vertices(G='', res_points='', dest_parcels='', G_demand='deman
     else:
         return(G, unique_origin_nodes, unique_dest_nodes_list, positive_demand, shared_nodes, res_points, dest_parcels, dest_points)
 
+
 def random_shortest_path(G='', res_points='', dest_points='', plot=False):
     '''
     Shortest path between a random residential parcel and all of a given resource.
@@ -820,7 +850,8 @@ def plot_aoi(G='', res_parcels='',
                     inundation=None, 
                     insets=None, 
                     save_loc=None,
-                    raster=None):
+                    raster=None,
+                    decomp_flow=False):
     '''
     Create a plot with commonly used features.
 
@@ -849,7 +880,9 @@ def plot_aoi(G='', res_parcels='',
     :param save_loc: Location to save figure (*Default=None*).
     :type save_loc: string
     :param raster: raster of inundation extent
-    :type raster: .tif rile, use rasterio.open()
+    :type raster: .tif file, use rasterio.open()
+    :param decomp_flow: if True, plot residential parcels with color ramp symbolizing travel time
+    :type decomp_flow: bool
 
     :return: **fig**, the produced figure
     :rtype: matplotlib figure
@@ -880,10 +913,24 @@ def plot_aoi(G='', res_parcels='',
 
     fig, ax = plt.subplots(facecolor='white', figsize=(12, 12))
     ax.axis('off')
-
+    
     # plot roads, residential parcels, and resource parcels
-    res_parcels.plot(ax=ax, color='antiquewhite', edgecolor='tan')
-    resource_parcels.plot(ax=ax, color='cornflowerblue', edgecolor='royalblue')
+    # if decomp_flow is true, plot res parcels with scale bar to show travel times
+    if decomp_flow is True:
+        res_parcels.plot(ax=ax, color='antiquewhite', edgecolor='tan')
+        # # IQR METHOD to mask impact of outliers
+        costs = sorted(res_parcels['cost_of_flow'].tolist())
+        costs = [x for x in costs if math.isnan(x)==False]
+        q1,q3,=np.percentile(costs, [25,75])
+        iqr=q3-q1
+        upper_bound=q3+(3*iqr)
+        res_parcels.loc[res_parcels['cost_of_flow']>=upper_bound, ['cost_of_flow']]=upper_bound
+        res_parcels.plot(ax=ax, column='cost_of_flow',cmap='bwr', legend=True)
+        #res_parcels.plot(ax=ax, column='cost_of_flow',cmap='bwr', scheme='natural_breaks',k=10, legend=True)
+    else:
+        res_parcels.plot(ax=ax, color='antiquewhite', edgecolor='tan')
+    # plot the resource parcels
+    resource_parcels.plot(ax=ax, color='mediumseagreen', edgecolor='darkgreen')
 
     # #TODO: ADD FEATURE TO HIGHLIGHT NODES - USEFUL IN ORDER TO TRANSLATE RESULTS TO GRAPH QUICKLY WHILE TESTING 
     # G_gdf_nodes.loc[[6016], 'geometry'].plot(ax=ax, color='green')
@@ -891,17 +938,16 @@ def plot_aoi(G='', res_parcels='',
     # G_gdf_nodes.loc[[7196], 'geometry'].plot(ax=ax, color='green')
     # #### END TEST
 
-
     # option to plot loss of access parcels
     if loss_access_parcels is None:
         pass
     else:
-        loss_access_parcels.plot(ax=ax, color='firebrick', edgecolor='darkred')
+        loss_access_parcels.plot(ax=ax, color='saddlebrown')
 
     # plot background light gray roads
     ox.plot.plot_graph(G,
                        ax=ax,
-                       node_size=5, node_color='black',
+                       node_size=0, node_color='black',
                        edge_color='lightgray',
                        show=False,
                        edge_linewidth=1,
@@ -920,12 +966,12 @@ def plot_aoi(G='', res_parcels='',
         old_min = min(unique_flows)
         old_max = max(unique_flows)
         new_min = 1
-        new_max = 7
+        new_max = 5
 
         # TODO: could add user inputs to assign values here
         # plotting each scaled width is too much, must bin into groups of 100
-        bounds = np.linspace(1,max(unique_flows), num=8)
-        widths = np.linspace(new_min, new_max, num=7)
+        bounds = np.linspace(1,max(unique_flows), num=new_max+1)
+        widths = np.linspace(new_min, new_max, num=new_max)
 
         # previous width determination method => scale each to new min/max
         # for flow in unique_flows:
@@ -953,7 +999,7 @@ def plot_aoi(G='', res_parcels='',
         pass
     else:
         # Choose colormap
-        cmap = pl.cm.Blues
+        cmap = plt.cm.Blues
         # Get the colormap colors
         my_cmap = cmap(np.arange(cmap.N))
         # Set alpha
@@ -961,9 +1007,10 @@ def plot_aoi(G='', res_parcels='',
         my_cmap[0][3] = 0
         # Create new colormap
         my_cmap = ListedColormap(my_cmap)
-        # BUG: previous, below code was raster instead of inundation - wouldn't work, don't know what should be here
+        # BUG: inundation plot kills figure sometimes - too big?
+        print('plotting raster')
         show(inundation, ax=ax, cmap=my_cmap, zorder=100)
-
+        print('raster plotted')
     # optional plot inset boundaries
     if insets is None:
         pass
@@ -1060,135 +1107,143 @@ def summary_function(G=''):
     return(num_edges, num_nodes, fig)
 
 
-def inundate_network(G='', path='', inundation=''):
+def inundate_network(G, path, inundation, G_capacity='capacity',G_width='width',G_speed='speed_kph',G_length='length',pp=4, name='AOI_Graph_Inundated'):
     '''
     Create a new graph network based on the imapct of an inundation layer.
 
-    Currently - An inundation layer is overlayed on a graph network. The maximum depth that intersects each road segment (within a given distance based on the type of road, **this needs to become a parameter and should be customizable**). That maximum depth is then equated to a decrease in speed and/or capacity on that entire road segment (**also needs attention** because water on a road segment might only impact poritions of that segment). 
+    Currently - An inundation layer is overlayed on a graph network. The maximum depth that intersects each road segment (within a given distance based on the type of road). That maximum depth is then equated to a decrease in speed and capacity on that entire road segment.
 
-    This function adds attributes including:
+    This function adds attributes to the graph network including including:
 
-    - max_inundation
-    - inundation_class
-    - inundation_capacity
-    - inundation_speed_kph
-    - inundation_travel_time
+    - max_inundation_mm, the maximum inundation in milimeters
+    - inundation_capacity_{mod}, the reduced capacity of the road segement
+    - kph_{mod}, the reduced speed of the road segment
+    - inundation_travel_time_{mod}, the new travel time of the road segment
+
+    For inundation_capacity_, kph_, and inundation_travel_time_, there are three seperate occurances of each attribute with the suffix mod, agr, or con refering to the moderate, aggressive, or conservative depth-disruption equation is used in its calculation. All are quadratically decreasing depending on the maximum allowable road depth which are 300, 150, or 600 respectively. Any road segments with a greater depth of water on a road segement that these values has a travel time and capacity set equal to 0.
+
+    This function also relies on parallel processing. Zonal statistics for each road segment is time consuming, but also independent of each other and therefore is easily parallelized. In one test, a single thread took 10 minutes to process 36,000 edges. The same study area took less than 3 minutes to process with 4 threads. 
     
     **Important Note** - There are a number of methodologies in which this can be accomplished, and others need to be explored further. The documenation listed must be updated regularly whenever changes are made to reflect current options of this function. Just a few things that need to be addressed include:
 
-    - customizable impacts - based on the literature
     - impact on partial segments compared to entire segment
 
     :param G: The graph network. Should have projected coordinates.
     :type G: networkx.Graph [Multi, MultiDi, Di]
-    :param path: File path to save output graph network to.
+    :param path: File path to save output graph network to. Will have the name 'AOI_Graph_Inundated'
     :type path: string
     :param inundation: File path to inundation raster .tif
     :type inundation: string
+    :param eq: either 'conservative', 'moderate', or 'aggresive', refers to which inundation depth-disruption equation to implement *Default='moderate'*
+    :type eq: string
+    :param G_capacity: graph attribute refering to road capacities. Capacity has units of vehicles per lane per hour *Default='capacity'* 
+    :type G_capacity: string
+    :param G_width: graph attribute refering to road width. Width has units of meters *Default='width'* 
+    :type G_width: string
+    :param G_speed: graph attribute refering to free flow road speed limit. Speed has units of km per hour *Default='speed'* 
+    :type G_speed: string
+    :param G_length: graph attribute refering to length of road segments. Length has units of meters *Default='length'* 
+    :type G_length: string
+    :param pp: number of threads to use in parallel processing
+    :type pp: int
 
-    :return: **inundated_G**, the impacted graph network.
+    :return: **inundated_G**, the impacted graph network. Will have new edge attributes of 'max_inundation', 'inundation_capacity', 'inundation_speed_kph', and 'inundation_travel_time'
     :rtype: networkx.Graph [Multi, MultiDi, Di]
     
     '''
-    
+    # convert graph to nodes and edges
     nodes, edges = ox.graph_to_gdfs(G)
+    # Set buffer geometry of edges gdf based on road width
+    edges['buffer_geometry'] = edges.buffer(distance=edges[G_width], cap_style=2)
+    edges.set_geometry(col='buffer_geometry', drop='geometry, inplace=True')
+    # edges['buffer_geometry'].to_file(
+    #     '/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/test_edges.shp')
+
+    # BEGIN PARALLEL PROCESSING ATTEMPT
+    # geometry column number
+    geo_col_num = edges.columns.get_loc("geometry")
+    # the individual inundation zonal statistic task
+    def inundate_zs(n):
+        return zonal_stats(edges.iat[n,geo_col_num], inundation, stats='max')
+    # create the sequence of numbers for each edge
+    n=range(0,len(edges))
+    # create a pool of workers and run the function inundate_zs for each zone
+    # map() function creates the background batches
+    pool=Pool(pp)
+    results=pool.map(inundate_zs, n)
+    # close the pool
+    pool.close()
+
+    # convert results to list - if None, where raster doesn't intersect shapefile, replace with 0
+    results_as_list = [0 if d[0]['max'] is None else round(d[0]['max']*1000/10)*10 for d in results]
+    # relate back to edges geodataframe
+    edges['max_inundation_mm'] = results_as_list
+    
+    # reduction equation options
+    # conservative -> 0.0002415w**2 - 0.2898w + 86.94
+    # moderate     -> 0.0009w**2 - 0.5529w + 86.9448
+    # aggressive   -> 0.003864w**2 - 1.1592w + 86.94
+
+    # CALCULATE THE REDUCTION IN SPEEDS AND SUBSEQUENT TRAVEL TIMES FOR CONSERVATIVE, MODERATE, AND AGGRESSIVE SCENARIOS
+    # calcualte percentage of speed (PSR) remaining - replace with 0 if greater than the low points
+    # Moderate
+    edges.loc[edges['max_inundation_mm']>=300, 'PSR_mod'] = 0
+    edges.loc[edges['max_inundation_mm'] < 300, 'PSR_mod'] = (0.0009*edges['max_inundation_mm']**2 - 0.5529*edges['max_inundation_mm'] + 86.9448)/86.9448
+    # Conservative
+    edges.loc[edges['max_inundation_mm']>=600, 'PSR_con'] = 0
+    edges.loc[edges['max_inundation_mm'] < 600, 'PSR_con'] = (0.0002415*edges['max_inundation_mm']**2 - 0.2898*edges['max_inundation_mm'] + 86.94)/86.94
+    # Aggressive
+    edges.loc[edges['max_inundation_mm']>=150, 'PSR_agr'] = 0
+    edges.loc[edges['max_inundation_mm'] < 150, 'PSR_agr'] = (0.003864*edges['max_inundation_mm']**2 - 1.1592*edges['max_inundation_mm'] + 86.94)/86.94
+
+    opts=['mod','con','agr']
+    for opt in opts:
+        # calculate the inundation speed based on reduction equation
+        edges[f'kph_{opt}']=edges[G_speed]*edges[f'PSR_{opt}']
+        # calculate inundation travel time in seconds
+        edges[f'inundation_travel_time_{opt}'] = edges[G_length]/(edges[f'kph_{opt}']/60/60*1000)
+        # replace travel time infs with 0 (when speed reduced to 0)
+        edges.loc[edges[f'inundation_travel_time_{opt}'] == np.inf,f'inundation_travel_time_{opt}'] = 0
+        # Create inundation capacity. if speed is reduced to zero, setting capacity equal to 0 because it cannot support travel
+        edges[f'inundation_capacity_{opt}'] = edges[G_capacity]
+        edges.loc[edges[f'kph_{opt}'] == 0, f'inundation_capacity_{opt}'] = 0
 
 
-    # B/C map is in meters, buffer will also be in meters
-    # Each road has different number of lanes and therefore diferent buffer
-    # Set width variables from intuition:
-    # average lane width is 3.7-meter in the US, for now use generic # of lanes
-    lane_width = 3.7  # meters, standard for Interstate highway system
-    motorway_w = lane_width*6/2
-    primary_w = lane_width*4/2
-    secondary_w = lane_width*2/2
-    tertiary_w = lane_width*2/2
-    residential_w = lane_width*2/2
-    motorway_link_w = lane_width*1/2
-    primary_link_w = lane_width*1/2
-    secondary_link_w = lane_width*1/2
-    # set conditions for relate
-    conditions = [
-        edges['highway'] == 'motorway',
-        edges['highway'] == 'primary',
-        edges['highway'] == 'secondary',
-        edges['highway'] == 'tertiary',
-        edges['highway'] == 'residential',
-        edges['highway'] == 'motorway_link',
-        edges['highway'] == 'primary_link',
-        edges['highway'] == 'secondary_link',
-    ]
-    # set choices for relate
-    choices = [motorway_w,
-               primary_w,
-               secondary_w,
-               tertiary_w,
-               residential_w,
-               motorway_link_w,
-               primary_link_w,
-               secondary_link_w]
-    # relate road type to lane/ buffer width
-    edges['buffer_width'] = np.select(conditions, choices, default=lane_width)
-    # buffer roads with flat end caps: buffer geometry is set as new attribute
-    edges['buffer_geometry'] = edges.buffer(distance=edges['buffer_width'],
-                                            cap_style=2)
-    # zonal stats returns a dictionary, we only want to keep the value
-    # This is function that relates maximum flood depth to each road segment
-    edges['max_inundation'] = [x['max'] for x in
-                               zonal_stats(edges['buffer_geometry'],
-                                           inundation,
-                                           stats='max')]
-    # set flood classification attribute/column
-    # TODO FOR NOW: Use paper depth classifications, needs to be changed to an input
-    flood_classes = [0, 1, 2, 3, 4, 5, 6]
-    bounds = [0.01, 0.15, 0.29, 0.49, 0.91, 1.07]
+    # edges.loc[edges['max_inundation_mm']>=307.167, 'PSR_mod'] = 0
+    # edges.loc[edges['max_inundation_mm'] < 307.167, 'PSR_mod'] = (0.0009*edges['max_inundation_mm']**2 - 0.5529*edges['max_inundation_mm'] + 86.9448)/86.9448
+    # # Conservative
+    # edges.loc[edges['max_inundation_mm']>=600, 'PSR_con'] = 0
+    # edges.loc[edges['max_inundation_mm'] < 600, 'PSR_con'] = (0.0002415*edges['max_inundation_mm']**2 - 0.2898*edges['max_inundation_mm'] + 86.94)/86.94
+    # # Aggressive
+    # edges.loc[edges['max_inundation_mm']>=150, 'PSR_agr'] = 0
+    # edges.loc[edges['max_inundation_mm'] < 150, 'PSR_agr'] = (0.003864*edges['max_inundation_mm']**2 - 1.1592*edges['max_inundation_mm'] + 86.94)/86.94
 
-    for idx, f_class in enumerate(flood_classes):
-        # set to flood class 0 if max inundation is less than 0.01
-        if idx == 0:
-            edges.loc[edges['max_inundation'] < bounds[0],
-                      'inundation_class'] = f_class
-        # set to last flood class (6) if max inundation is greater than last bound (1.07)
-        elif idx == len(flood_classes)-1:
-            edges.loc[edges['max_inundation'] > bounds[-1],
-                      'inundation_class'] = f_class
-        # set to given flood class if falls between the appropriate bounds
-        else:
-            edges.loc[(edges['max_inundation'] > bounds[idx-1]) &
-                      (edges['max_inundation'] <= bounds[idx]),
-                      'inundation_class'] = f_class
+    # # calculate the inundation speed based on reduction equation
+    # edges['kph_mod'] = edges[G_speed]*edges['PSR_mod']
+    # edges['kph_con'] = edges[G_speed]*edges['PSR_con']
+    # edges['kph_agr'] = edges[G_speed]*edges['PSR_agr']
+    
+    # # calculate inundation travel time in seconds
+    # edges['inundation_travel_time_mod'] = edges[G_length]/(edges['kph_mod']/60/60*1000)
+    # edges['inundation_travel_time_con'] = edges[G_length]/(edges['kph_con']/60/60*1000)
+    # edges['inundation_travel_time_agr'] = edges[G_length]/(edges['kph_agr']/60/60*1000)
 
-    # Relate inundation class to decrease in speed
-    # create new inundated_capacity, inundation_speed, inundation_tavel_time
-    edges['inundation_capacity'] = 999999
-    edges.loc[edges['inundation_class'] >= 3,
-              'inundation_capacity'] = 0
-    # if inundation class is 0, speed remains the same
-    edges.loc[edges['inundation_class'] == 0,
-              'inundation_speed_kph'] = edges['speed_kph']
+    # # replace travel time infs with 0 (when speed reduced to 0)
+    # edges.loc[edges['inundation_travel_time_mod'] == np.inf,'inundation_travel_time_mod'] = 0
+    # edges.loc[edges['inundation_travel_time_con'] == np.inf,'inundation_travel_time_con'] = 0
+    # edges.loc[edges['inundation_travel_time_agr'] == np.inf,'inundation_travel_time_agr'] = 0
 
-    # if inundation  class is 1, speed reduced to 25% maximum
-    edges.loc[edges['inundation_class'] == 1,
-              'inundation_speed_kph'] = edges['speed_kph']*0.25
+    # # Create inundation capacity. if speed is reduced to zero, setting capacity equal to 0 because it cannot support travel
+    # edges['inundation_capacity_mod'] = edges[G_capacity]
+    # edges['inundation_capacity_con'] = edges[G_capacity]
+    # edges['inundation_capacity_agr'] = edges[G_capacity]
+    # edges.loc[edges['kph_mod'] == 0, 'inundation_capacity_mod']=0
+    # edges.loc[edges['kph_con'] == 0, 'inundation_capacity_con']=0
+    # edges.loc[edges['kph_agr'] == 0, 'inundation_capacity_agr'] = 0
 
-    # if inundation  class is 2, speed reduced to 5% maximum
-    edges.loc[edges['inundation_class'] == 2,
-              'inundation_speed_kph'] = edges['speed_kph']*0.05
-
-    # if inundation is anything above 2, set speed to 0
-    edges.loc[edges['inundation_class'] >= 3,
-              'inundation_speed_kph'] = 0
-
-              
-
-    # calculate inundation travel time, replace inf with 0
-    edges['inundation_travel_time'] = edges['length']/(edges[
-        'inundation_speed_kph']/60/60*1000)
-    edges.loc[edges['inundation_travel_time'] == np.inf,
-              'inundation_travel_time'] = 0
     # save edited graph
     new_graph = ox.graph_from_gdfs(nodes, edges)
-    save_2_disk(G=new_graph, path=path, name='AOI_Graph_Inundated')
+    save_2_disk(G=new_graph, path=path, name=name)
     return (new_graph)
 
 
@@ -1400,7 +1455,6 @@ def flow_decomposition(G='', res_points='', dest_points='',res_parcels='',dest_p
                 sink_insights[sink] = {'Number of unique paths': 1, 'Total flow w/o walking': limiting_flow, 'Total flow w/ walking': limiting_flow + len(res_points.loc[res_points['nearest_node'] == sink])}
            
         if dest_method == 'multiple':
-
             if sink in sink_insights.keys():
                 sink_insights[sink]['Number of unique paths'] +=1
                 sink_insights[sink]['Total flow w/o walking']+= limiting_flow
@@ -1433,7 +1487,6 @@ def flow_decomposition(G='', res_points='', dest_points='',res_parcels='',dest_p
             res_points.loc[res_points['nearest_node'] == node, ['cost_of_flow']] = np.NaN
             nodes_to_pop.append(node)
             
-
     # 2. Nodes with a single path
     unique_origin_nodes = unique_origin_nodes.tolist()
     for node in nodes_to_pop:
@@ -1498,7 +1551,6 @@ def flow_decomposition(G='', res_points='', dest_points='',res_parcels='',dest_p
             res_points.loc[query, ['walkable?']] = np.NaN
             res_points.loc[query, ['service']] = 'yes'
 
-
     #4. set shared nodes to walkable and set remaining features
     res_points.loc[res_points['nearest_node'].isin(shared_nodes), ['walkable?']] = 'yes'
     res_points.loc[res_points['nearest_node'].isin(shared_nodes), ['service']] = 'yes'
@@ -1506,7 +1558,6 @@ def flow_decomposition(G='', res_points='', dest_points='',res_parcels='',dest_p
     res_points.loc[res_points['nearest_node'].isin(shared_nodes), ['sink']] = res_points['nearest_node']
     res_points.loc[res_points['nearest_node'].isin(shared_nodes), ['path']] = 0
 
-    
     # convert sink_insights to dataframe
     sink_insights_df = pd.DataFrame.from_dict(sink_insights, orient='index', columns=['Number of unique paths',
                                                                                         'Total flow w/o walking',
@@ -1522,6 +1573,41 @@ def flow_decomposition(G='', res_points='', dest_points='',res_parcels='',dest_p
     res_parcels = gpd.sjoin(res_parcels,res_points)
     dest_parcels = gpd.sjoin(dest_parcels, dest_points)
   
+    # metrics
+    # convert to list of flows
+    cost_list = sorted(res_parcels['cost_of_flow'].tolist())
+    #remove nans 
+    cost_list = [x for x in cost_list if math.isnan(x)==False]
+    # calculate interquartile range
+    q1,q3,=np.percentile(cost_list, [25,75])
+    iqr=q3-q1
+    upper_bound=q3+(3*iqr)
+    # calculate percentage of flows that can be considered a major outlier
+    perc_outlier = sum(x>=upper_bound for x in cost_list)/positive_demand *100
+    # create list with 'masked' outliers
+    cost_list_wo = [upper_bound if x >= upper_bound else x for x in cost_list]
+    # median flow cost(excluding including)
+    med_cost_in = np.median(cost_list)
+    # total flow cost(excluding including)
+    total_cost_in = sum(cost_list)
+    # average flow cost(excluding including)
+    mean_cost_in = np.mean(cost_list)
+    # median flow (excluding outliers)
+    med_cost_ex = np.median(cost_list_wo)
+    # total flow cost(excluding outliers)
+    total_cost_ex = sum(cost_list_wo)
+    # average flow cost(excluding outliers)
+    mean_cost_ex = np.mean(cost_list_wo)
+
+    print(f'percent of flow major outlier: {perc_outlier}')
+    print(f'cost of flow with outliers: {total_cost_in}')
+    print(f'cost of flow without outliers: {total_cost_ex}')
+    print(f'average cost of flow with outliers: {mean_cost_in}')
+    print(f'average cost of flow without outliers: {mean_cost_ex}')
+    print(f'median cost of flow with outliers: {med_cost_in}')
+    print(f'median cost of flow without outliers: {med_cost_ex}')
+
+
     # return the decomposed paths dict of dict, the sink_insights dict of dict, and the res_locs/dest_locs geodataframes
     return decomposed_paths, sink_insights, res_parcels, dest_parcels
 
