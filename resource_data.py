@@ -3,11 +3,9 @@ import logging
 import warnings
 import geopandas as gpd
 import pandas as pd
-import contextily as cx
 import numpy as np
 import matplotlib.pyplot as plt
 import osmnx as ox
-import plotly.express as px
 from shapely.geometry import Point, Polygon
 
 
