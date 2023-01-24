@@ -13,6 +13,8 @@ import numpy as np
 from scipy.stats import iqr
 from rasterio.plot import show
 import matplotlib.pylab as pl
+from matplotlib import pyplot
+import matplotlib.colors as colors
 from matplotlib.colors import ListedColormap
 from rasterstats import zonal_stats
 from matplotlib_scalebar.scalebar import ScaleBar
@@ -20,37 +22,62 @@ import random
 import copy
 import heapq
 from collections import defaultdict
+import rasterio
+import rasterio.mask
+import fiona
+import shapely
+import time
+from multiprocessing.pool import ThreadPool as Pool
+from multiprocessing import Pool as Poolm
+from multiprocessing import Process
+import math
+import sys
+import matplotlib as mpl
+
+
+from scipy import sparse
 
 # set some panda display options
 pd.set_option('display.max_columns', None)
 
+# CAPACITY TODOS
+# TODO: Change disruption impact on capacity - remove nodes that cannot support travel
+# TODO: Potentially - add capacity limitation to min cost flow calculations (i.e., ideal travel functions )
 
+
+# SPEED DISRUPTION TODOS
+# TODO: input new equations for speed disruption, possibly add bining feature
+
+
+# POTENTIAL LIMITATION TODOS
 # TODO: Some of the closest origin nodes are the destination nodes - for now assuming that no paths need to be calculated (i.e., can just walk)
-# TODO: Add road capacities in min cost flow calculation
-# TODO: Need to use different method to determine random node variable name in the min cost flow function
+
+
+# IMPROVEMENT TODOS
+# TODO: move digraph conversion into better spot and determine when it is needed
+# TODO: Move CRS check into functions
 # TODO: Min cost flow and max cost flow functions have some repeat code - I could condense a lot of the work
-# TODO: travel disruption - right now using arbitrary disruption
-#   for example - flood classificaiton 1 is set to reduce speed by 75%
-#                 flood classificaiton 2 is set to reduce speed by 95%
-#                 flood classificaiton 3 and higher reduces capacity to 0
-# TODO: change inundate network function to be more broad
-#   see above TODO, just needs to have more inputs
-#   this includes flood classificaitons and impacts on speed, etc.
 # TODO: Use kwargs methodology to create new edges with appropriate attributes
 #   see # TODO: KWARGS below in code for example
-# TODO: Move CRS check into functions
-# TODO: move digraph conversion into function
-#   There are a lot of cross overs between digraph and multigraph, need to
-#   examine this in more detail
-# TODO: In plot aoi - allow it to accept a list of dest parcels
-#   i.e., food and gas locations
 # TODO: read_graph_from_disk - problem with preserving dtypes so I hardcoded a
 #   temporary fix - right now it goes through the attributes and determines if
 #    it could be converted to a float - if it can it does
 #   this involves manually skipping oneway as well (i think b/c its bool)
 #   this was needed b/c  inundation_G load not preserve datatypes
-# TODO: convert parcel identificaiton (access vs. no access) to function
-# TODO: update shortest path and path to functions to the new modified ones - much quicker 
+# TODO: update shortest path and path to functions to the new modified ones - much quicker
+# TODO: add impact of rainfall intensity on reduction of speed and intensity
+    # light rain reduces free flow speed 2-13% and capacity 4-11%
+    # heavy rain reduces speed 3-16% and capacity 10-30%
+    # see these sites for info: 
+    # https://engrxiv.org/preprint/view/1322/2765
+    # https://ops.fhwa.dot.gov/weather/best_practices/AMS2003_TrafficFlow.pdf 
+    # https://ops.fhwa.dot.gov/weather/q1_roadimpact.htm#:~:text=Light%20rain%20can%20decrease%20freeway,12%20percent%20in%20low%20visibility.
+
+# OTHER TODOS
+# TODO: Need to use different method to determine random node variable name in the min cost flow function
+# TODO: In plot aoi - allow it to accept a list of dest parcels
+#   i.e., food and gas locations# TODO: convert parcel identificaiton (access vs. no access) to function
+
 
 
 
@@ -75,43 +102,10 @@ pd.set_option('display.max_columns', None)
 #   classification (e.g., freeways)
 
 
-# VARIABLES USED #############################################################
-# # file path
-# path = "/home/mdp0023/Documents/Codes_Projects/\
-# network_analysis/Network_Testing_Data"
-# image_path = "/home/mdp0023/Documents/Codes_Projects/\
-# network_analysis/Poster_Graphics"
-# inset_path = "/home/mdp0023/Documents/Codes_Projects/network_analysis/bboxes"
-# # AOI without buffer
-# aoi_area = f'{path}/Neighborhood_Network_AOI.shp'
-# # AOI with buffer
-# aoi_buffer = f'{path}/Neighborhood_Network_AOI_Buf_1km.shp'
-# # centroids of res parcels and food marts
-# res_points_loc = f'{path}/Residential_Parcels_Points_Network_AOI.shp'
-# food_points_loc = f'{path}/Food_Marts_Points_Network_AOI.shp'
-# # shapefiles of res parcels and food marts
-# res_parcels = f'{path}/Residential_Parcels_Network_AOI.shp'
-# food_parcels = f'{path}/Food_Marts_Network_AOI.shp'
-# # path for inundation
-# inundation = f'{path}/Network_Inun.tif'
-# raster = rio.open(inundation)
-
-# # LOAD OTHER DATA ############################################################
-# # shapefile centroids of residental plots
-# res_points = gpd.read_file(res_points_loc)
-# # shapefile of res parcels
-# res_locs = gpd.read_file(res_parcels)
-# # shapefile centroids of 3 foodmart plots
-# food_points = gpd.read_file(food_points_loc)
-# # shapefile of food mart parcels
-# food_locs = gpd.read_file(food_parcels)
-# # shapefile of area of interest
-# aoi_area = gpd.read_file(aoi_area)
-
 # THE FUNCTIONS #############################################################
 
 
-def shape_2_graph(source=''):
+def shape_2_graph(source):
     '''
     Extracts road network from shapefile.
 
@@ -135,12 +129,154 @@ def shape_2_graph(source=''):
     
     '''
 
+    # extracting from OSMNx requires crs to be EPSG:4326(WGS84). This will preserve output crs if projected
+    boundary = gpd.read_file(source)
+    crs_proj = boundary.crs
+    boundary=boundary.to_crs("EPSG:4326")
+
     G = ox.graph_from_polygon(
-        gpd.read_file(source)['geometry'][0],
+        boundary['geometry'][0],
         network_type='drive')
 
-    ox.add_edge_speeds(G)
+    # dictionary of highway speeds in kph
+    hwy_speeds = {"motorway": 120,
+                  "motorway_link": 120,
+                  "trunk": 120,
+                  "trunk_link": 120,
+                  "primary": 65,
+                  "primary_link": 65,
+                  "secondary": 50,
+                  "secondary_link": 50,
+                  "tertiary": 50,
+                  "tertiary_link": 50,
+                  "residential": 40,
+                  "minor": 40,
+                  "unclassified": 40,
+                  "living_street": 40}
+    # add edge speeds where they exist
+    ox.add_edge_speeds(G, hwy_speeds=hwy_speeds, fallback=30)
+    # add travel times 
     ox.add_edge_travel_times(G)
+
+    # some highways types have multiple inputs (e.g., ['residential','unclassified']), which messes with capacity and width assignments
+    # determine which edges have multiple road types and select the first from the list to be that value
+    edge_rtype = nx.get_edge_attributes(G, 'highway')
+    edges = [k for k, v in edge_rtype.items() if not isinstance(v, str)]
+    for edge in edges:
+        list = G.get_edge_data(edge[0], edge[1], edge[2])['highway']
+        G[edge[0]][edge[1]][edge[2]]['highway'] = list[0]
+    
+    # updated edge attributes variable to update lane capacities
+    edge_rtype = nx.get_edge_attributes(G, 'highway')
+    # set per lane capacities based on following scheme:
+        # Motorway & its links                                  : 2300 pcu/hr/ln
+        # Trunk & its links                                     : 2300 pcu/hr/ln
+        # Primary & its links                                   : 1700 pcu/hr/ln
+        # Secondary & its links                                 : 1500 pcu/hr/ln
+        # Tertiary & its links                                  : 1000 pcu/hr/ln
+        # Residential, minor, living street, and unclassified   :  600 pcu/hr/ln
+    for k, v in edge_rtype.items():
+        if v == 'motorway' or v == 'motorway_link' or v == 'trunk' or v == 'trunk_link':
+            G[k[0]][k[1]][k[2]]['capacity'] = 2300
+        elif v == 'primary' or v == 'primary_link':
+            G[k[0]][k[1]][k[2]]['capacity'] = 1700
+        elif v == 'secondary' or v == 'secondary_link':
+            G[k[0]][k[1]][k[2]]['capacity'] = 1500
+        elif v == 'tertiary' or v == 'tertiary_link':
+            G[k[0]][k[1]][k[2]]['capacity'] = 1000
+        elif v == 'residential' or v == 'minor' or v == 'living_street' or v == 'unclassified':
+            G[k[0]][k[1]][k[2]]['capacity'] = 600
+
+
+    # some roads gain/lose lanes during uninterupted segments, and therefore lanes are reported as a list (e.g., ['3', '4', '2'])
+    # determine which edges have multiple number of lanes and replace with the smallest one available 
+    edge_lane = nx.get_edge_attributes(G, 'lanes')
+    edges = [k for k, v in edge_lane.items() if not isinstance(v, str)]
+    for edge in edges:
+        list = G.get_edge_data(edge[0], edge[1], edge[2])['lanes']
+        list_int = [int(i) for i in list]
+        minimum = min(list_int)       
+        G[edge[0]][edge[1]][edge[2]]['lanes'] = minimum
+
+    # convert all lanes to int, for some reason reported as strings
+    edge_lane = nx.get_edge_attributes(G, 'lanes')
+    edge_lane_int = dict([k, int(v)] for k, v in edge_lane.items())
+    nx.set_edge_attributes(G, edge_lane_int, 'lanes')
+
+    # Not all edges have lane information, need to fill in gaps and determine road widths
+    # Factor of the type of road and if it is one way or not
+    # Number of lanes ONE WAY will go as follows:
+        # Trunk:                                                4
+        # Motorway:                                             4
+        # Primary:                                              3
+        # Secondary:                                            2
+        # Tertiary:                                             1
+        # Residential, minor, unclassified, living street:      1
+        # all link roads (typically on ramps or slip lanes):    1
+    # AVERAGE LANE WIDTH IN METERS
+    lane_width = 3.7
+    edge_lane = nx.get_edge_attributes(G, 'lanes')
+    edge_oneway = nx.get_edge_attributes(G, 'oneway')
+    edge_rtype = nx.get_edge_attributes(G, 'highway')
+
+
+    for k,v in edge_rtype.items():
+        # for oneway roads...
+        if G[k[0]][k[1]][k[2]]['oneway'] is True:
+            # that have OSMNx lane information
+            if 'lanes' in G[k[0]][k[1]][k[2]]:
+                G[k[0]][k[1]][k[2]]['width'] = lane_width*G[k[0]][k[1]][k[2]]['lanes']
+                G[k[0]][k[1]][k[2]]['capacity'] *= G[k[0]][k[1]][k[2]]['lanes']
+            # need lane information
+            else:
+                if v == 'trunk' or v == 'motorway' :
+                    G[k[0]][k[1]][k[2]]['lanes'] = 4
+                    G[k[0]][k[1]][k[2]]['width'] = 4* lane_width
+                    G[k[0]][k[1]][k[2]]['capacity'] *= G[k[0]][k[1]][k[2]]['lanes']
+                elif v == 'primary':
+                    G[k[0]][k[1]][k[2]]['lanes'] = 3
+                    G[k[0]][k[1]][k[2]]['width'] = 3 * lane_width
+                    G[k[0]][k[1]][k[2]]['capacity'] *= G[k[0]][k[1]][k[2]]['lanes']
+                elif v == 'secondary':
+                    G[k[0]][k[1]][k[2]]['lanes'] = 2
+                    G[k[0]][k[1]][k[2]]['width'] = 2 * lane_width
+                    G[k[0]][k[1]][k[2]]['capacity'] *= G[k[0]][k[1]][k[2]]['lanes']
+                elif v == 'tertiary' or v == 'residential' or v == 'minor' or v == 'unclassified' or v == 'living_street' or v == 'trunk_link' or v == 'motorway_link' or v == 'primary_link' or v == 'secondary_link' or v == 'tertiary_link':
+                    G[k[0]][k[1]][k[2]]['lanes'] = 1
+                    G[k[0]][k[1]][k[2]]['width'] = 1 * lane_width
+                    G[k[0]][k[1]][k[2]]['capacity'] *= G[k[0]][k[1]][k[2]]['lanes']
+        # for roads not listed as one-way roads...
+        else:
+            # that have OSMNx lane information
+            if 'lanes' in G[k[0]][k[1]][k[2]]:
+                G[k[0]][k[1]][k[2]]['width'] = lane_width*G[k[0]][k[1]][k[2]]['lanes']
+            # need lane information
+            else:
+                if v == 'trunk' or v == 'motorway' :
+                    G[k[0]][k[1]][k[2]]['lanes'] = 8
+                    G[k[0]][k[1]][k[2]]['width'] = 8* lane_width
+                    G[k[0]][k[1]][k[2]]['capacity'] *= G[k[0]][k[1]][k[2]]['lanes']/2
+                elif v == 'primary':
+                    G[k[0]][k[1]][k[2]]['lanes'] = 6
+                    G[k[0]][k[1]][k[2]]['width'] = 6 * lane_width
+                    G[k[0]][k[1]][k[2]]['capacity'] *= G[k[0]][k[1]][k[2]]['lanes']/2
+                elif v == 'secondary':
+                    G[k[0]][k[1]][k[2]]['lanes'] = 4
+                    G[k[0]][k[1]][k[2]]['width'] = 4 * lane_width
+                    G[k[0]][k[1]][k[2]]['capacity'] *= G[k[0]][k[1]][k[2]]['lanes']/2
+                elif v == 'tertiary' or v == 'residential' or v == 'minor' or v == 'unclassified' or v == 'living_street':
+                    G[k[0]][k[1]][k[2]]['lanes'] = 2
+                    G[k[0]][k[1]][k[2]]['width'] = 2 * lane_width
+                    G[k[0]][k[1]][k[2]]['capacity'] *= G[k[0]][k[1]][k[2]]['lanes']/2
+                elif v == 'trunk_link' or v == 'motorway_link' or v == 'primary_link' or v == 'secondary_link' or v == 'tertiary_link':
+                    G[k[0]][k[1]][k[2]]['lanes'] = 1
+                    G[k[0]][k[1]][k[2]]['width'] = 1 * lane_width
+                    G[k[0]][k[1]][k[2]]['capacity'] *= G[k[0]][k[1]][k[2]]['lanes']/2
+    
+
+    # project back to original crs
+    G=ox.project_graph(G, crs_proj)
+
 
     return(G)
 
@@ -296,63 +432,152 @@ def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
     # create empty lists for nodes of origins and destinations
     origins = []
     destinations = []
-    # append origins to have nearest node (intersection) of all res_points
-    for x in list(range(0, len(res_points))):
-        res_point = res_points.iloc[[x]]
-        res_lon = res_point['geometry'].x.iloc[0]
-        res_lat = res_point['geometry'].y.iloc[0]
-        origin = ox.distance.nearest_nodes(G, res_lon, res_lat)
-        origins.append(origin)
-        # add new column to res_points dataframe with nearest node
-        res_points.loc[res_points.index[x],'nearest_node'] = int(origin)
-        
-    # append destinations to have nearest node (intersections) of all dest_points
-    for x in list(range(0, len(dest_points))):
-        des_point = dest_points.iloc[[x]]
-        des_lon = des_point['geometry'].x.iloc[0]
-        des_lat = des_point['geometry'].y.iloc[0]
-        destination = ox.distance.nearest_nodes(G, des_lon, des_lat)
-        destinations.append(destination)
-        # add new column to des_points dataframe with nearest node
-        dest_points.loc[res_points.index[x], 'nearest_node'] = int(destination)
+ 
+    # append res_points with nearest network node
+    longs=res_points.geometry.x
+    lats=res_points.geometry.y
+    origins = ox.distance.nearest_nodes(G, longs, lats)
+    res_points['nearest_node'] = origins
 
-    # Creat the demand attribute and set all equal to 0
-    #TODO: make sure this has no impact on other functions
-        # it's not necessary - but is meant to keep values for every attribute instead of having missing data/holes in attributes
-        # THIS IS IMPACTING G ELSEWHERE AS WELL - MIGHT BE MAJOR ERROR
+    # will find the nearest node based solely on the centroid of resource parcel (i.e., dest_points)
+    longs=dest_points.geometry.x
+    lats=dest_points.geometry.y
+    destinations = ox.distance.nearest_nodes(G, longs, lats)
+    dest_points['nearest_node'] = destinations
+
+    # Create the demand attribute and set all equal to 0
     nx.set_node_attributes(G, values=0, name=G_demand)
+
+    # counting taking too long trying a new approach
+    from collections import Counter
+    #unique_origin_nodes_counts = dict(Counter(origins).items())
+    unique_origin_nodes_counts = dict(zip(list(Counter(origins).keys()), [x*-1 for x in Counter(origins).values()]))
+    
+    # Create list of unique origins and destinations
+    unique_origin_nodes = np.unique(origins)
+    unique_dest_nodes = np.unique(destinations)
+    
+    # determine shared nodes and set demand equal to 0
+    shared_nodes = list(set(unique_origin_nodes) & set(unique_dest_nodes))
+    for x in shared_nodes:
+        unique_origin_nodes_counts[x] = 0
+
+    # add source information (the negative demand value prev. calculated)
+    nx.set_node_attributes(G, unique_origin_nodes_counts, G_demand)
+
+    # Calculate the positive demand: the sink demand
+    positive_demand = sum(unique_origin_nodes_counts.values())*-1
+
+    # TODO: I don't think returning res_points or dest_points is neccessary and can be removed - ACTUALLY MIGHT BE USED IN FLOW DECOMP
+    return(G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points)
+
+
+def nearest_nodes_vertices(G='', res_points='', dest_parcels='', G_demand='demand', dest_points=None):
+    '''
+    MODIFICATION OF NEAREST_NODES FUNCTION TO SNAP DEST PARCELS TO MULTIPLE NODES
+    
+    Return Graph with demand attribute based on snapping sources/sinks to nearest nodes (intersections).
+    
+    The purpose of this function is take a series of input locations and determine the nearest nodes (intersections) within a Graph network. It takes this information to create source and sink information. 
+
+    **Important Note**: The output graph has an attribute labeled G_demand, which shows the number of closest residential parcels to each unique intersection. Because these are considered sources, they have a negative demand. Sink locations, or the intersections that are closest to the the dest_points, will not have a demand value (G_demand == 0) because we do not know how much flow is going to that node until after a min-cost flow algorithm is run. I.e., to route properly, we end up creating an artifical sink and then decompose the flow to determine how much flow is going to each destination.
+
+    :param G: Graph network
+    :type G: networkx.Graph [Multi, MultiDi, Di]
+    :param res_points: Point locations of all of the residential parcels
+    :type res_points: geopandas.GeoDataFrame
+    :param dest_parcels: Parcels of all of the resources the residential parcels are to be routed to
+    :type dest_points: geopandas.GeoDataFrame
+    :param G_demand: name of attribuet in G refering to node demand, *Default='demand*
+    :type G_demand: string
+    :param dest_points: Optional, if not None, will output with added columns on the nearest nodes
+    :type dest_points: geopandas dataframe
+    :returns: 
+        - **G**, *networkx.DiGraph* with G_demand attribute showing source values (negative demand)
+        - **unique_origin_nodes**, *lst* of unique origin nodes
+        - **unique_dest_nodes**, *lst* of unqiue destination nodes
+        - **positive_demand**, *int* of the total positive demand across the network. **Does not include the residents that share a closest intersection with a resource parcel.**
+        - **Shared_nodes**, *lst* of nodes that res and destination parcels share same nearest 
+        - **res_points**, *geopandas.GeoDataFrame*, residential points with appended attribute of 'nearest_node'
+        - **dest_parcels**, *geopandas.GeoDataFrame*, destination/sink footprints with appended attribute of 'nearest_node'
+        - **dest_points**, *geopandas.GeoDataFrame*, destination/sink points with appended attribute of 'nearest_node'
+    :rtype: tuple
+
+    '''
+
+    # create empty lists for nodes of origins and destinations
+    origins = []
+    destinations = []
+
+    # append res_points with nearest network node
+    longs = res_points.geometry.x
+    lats = res_points.geometry.y
+    origins = ox.distance.nearest_nodes(G, longs, lats)
+    res_points['nearest_node'] = origins
+
+    # Will determine vertices of dest parcels and find multiple nearest nodes for destinations
+    # simplify dest_parcels to reduce geometry
+    dest_simp = dest_parcels.simplify(3, preserve_topology=False)
+    # account for multipolygons by creating convex hulls of each parcel
+    convex_hull = dest_simp.convex_hull
+    # convert back to geodataframe
+    dest_simp = gpd.GeoDataFrame({'geometry': convex_hull})
+    # create nested list of vertices to examine for each parcel
+    coords = [list(dest_simp.geometry.exterior[row_id].coords)
+                for row_id in range(dest_simp.shape[0])]
+
+    # initiate lists
+    # nested list of destinations
+    destinations_int = []
+    # list of destinations in string form, each string is all detinations for one parcel
+    destinations_str = []
+    for idx, coord in enumerate(coords):
+        # BUG maybe: in BPA, coords has 3 values, AN only has two. Not sure why, should examine, for now built in loop to bypass
+        if len(coord[0]) == 2:
+            longs = [i for i, j in coord]
+            lats = [j for i, j in coord]
+        elif len(coord[0]) == 3:
+            longs = [i for i, j, z in coord]
+            lats = [j for i, j, z in coord]
+        dests = ox.distance.nearest_nodes(G, longs, lats)
+        destinations_int.append(dests)
+        destinations_str.append(' '.join(str(x) for x in dests))
+    dest_parcels['nearest_nodes'] = destinations_str
+    if dest_points is not None:
+        dest_points=gpd.sjoin(dest_points, dest_parcels)
+        dest_points.drop(columns=['index_right'], inplace=True)
+    # create single list of destinations
+    destinations = [element for innerList in destinations_int for element in innerList]
+
+    # Create the demand attribute and set all equal to 0
+    nx.set_node_attributes(G, values=0, name=G_demand)
+
+    # counting taking too long trying a new approach
+    from collections import Counter
+    #unique_origin_nodes_counts = dict(Counter(origins).items())
+    unique_origin_nodes_counts = dict(zip(list(Counter(origins).keys()), [
+                                      x*-1 for x in Counter(origins).values()]))
 
     # Create list of unique origins and destinations
     unique_origin_nodes = np.unique(origins)
     unique_dest_nodes = np.unique(destinations)
-    # Based on unique origins, determine negative demands (source values)
-    unique_origin_nodes_counts = {}
-    for unique_node in unique_origin_nodes:
-        count = np.count_nonzero(origins == unique_node)
-        unique_origin_nodes_counts[unique_node] = {G_demand: -1*count}
-    # set demand at  unique dest nodes to 0 (SEE TODO) - if a source and sink share an intersection, then we assume it is within walking distance and is always accessible
-    shared_nodes = []
-    for x in unique_dest_nodes:
-        unique_origin_nodes_counts[x] = {G_demand: 0}
-        # Remove from the unique origin nodes because no longer an origin
-        unique_origin_nodes = np.delete(
-            unique_origin_nodes, np.where(unique_origin_nodes==x))
-        # Create a list of shared nodes
-        shared_nodes.append(x)
+    unique_dest_nodes_list = [np.unique(nodes) for nodes in destinations_int]
 
-    # Convert graph to digraph format
-    # TODO: Need to see if this is having an impact on the output
-    G = nx.DiGraph(G)
+    # determine shared nodes and set demand equal to 0
+    shared_nodes = list(set(unique_origin_nodes) & set(unique_dest_nodes))
+    for x in shared_nodes:
+        unique_origin_nodes_counts[x] = 0
+
     # add source information (the negative demand value prev. calculated)
-    nx.set_node_attributes(G, unique_origin_nodes_counts)
+    nx.set_node_attributes(G, unique_origin_nodes_counts, G_demand)
 
     # Calculate the positive demand: the sink demand
-    demand = 0
-    for x in unique_origin_nodes_counts:
-        demand += unique_origin_nodes_counts[x][G_demand]
-    positive_demand = demand*-1
+    positive_demand = sum(unique_origin_nodes_counts.values())*-1
 
-    return(G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points)
+    if dest_points is None:
+        return(G, unique_origin_nodes, unique_dest_nodes_list, positive_demand, shared_nodes, res_points, dest_parcels)
+    else:
+        return(G, unique_origin_nodes, unique_dest_nodes_list, positive_demand, shared_nodes, res_points, dest_parcels, dest_points)
 
 
 def random_shortest_path(G='', res_points='', dest_points='', plot=False):
@@ -427,7 +652,7 @@ def random_shortest_path(G='', res_points='', dest_points='', plot=False):
         return routes
 
 
-def min_cost_flow_parcels(G='', res_points='', dest_points='', G_demand='demand', G_capacity='capacity', G_weight='travel_time'):
+def min_cost_flow_parcels(G='', res_points='', dest_points='', dest_parcels='', G_demand='demand', G_capacity='capacity', G_weight='travel_time', dest_method='single'):
     '''
     Find the minimum cost flow of all residential parcels to a given resource.
 
@@ -451,7 +676,7 @@ def min_cost_flow_parcels(G='', res_points='', dest_points='', G_demand='demand'
     **It is worth considering changing this methodology**, adding nodes and edges from the points themselves, 
     but this requires further exploration.
 
-    This function also does not fact in limits to a resource. In other words, there is no limit on the number of residential parcels
+    This function also does not factor in limits to a resource. In other words, there is no limit on the number of residential parcels
     that can go to any single resource location. **This feature also needs further exploration.**
 
     :param G: Graph network. Will be converted to DiGraph in function
@@ -460,12 +685,16 @@ def min_cost_flow_parcels(G='', res_points='', dest_points='', G_demand='demand'
     :type res_points: geopandas.GeoDataFrame
     :param dest_points: Point locations of all of the resources the random residential parcel is to be routed to
     :type dest_points: geopandas.GeoDataFrame
+    :param dest_parcels: technically only required if dest_method == 'multiple', destination parcel shapefile
+    :param dest_points: geopandas.GeoDataFrame
     :param G_demand: name of attribute in G refering to node demands, *Default='demand'* 
     :type G_demand: string
     :param G_capacity: name of attribute in G refering to edge capacities, *Default='capacity'* 
     :type G_capacity: string
     :param G_weight: name of attribute in G refering to edge weights, *Default='travel_time'* 
     :type G_weight: string  
+    :param dest_method: either 'single', or 'multiple', determines which destination point methodology to use. Either connecting to nearest single node or multiple nearest nodes
+    :type dest_method: string
     :returns: 
         - **flow_dictionary**, dictionary of dictionaries keyed by nodes for edge flows
         - **cost_of_flow**, integer, total cost of all flow. If weight/cost is travel time, this is the total time for everyone to reach the resource (seconds).
@@ -473,22 +702,67 @@ def min_cost_flow_parcels(G='', res_points='', dest_points='', G_demand='demand'
     :Raises: nx.NetworkXUnfeasible if all demand cannot be satisfied, i.e., all residential parcels cannot reach the resource.
 
     ''' 
+    # for many functions to work, graph needs to be a digraph (NOT a multidigraph) i.e., no parallel edges
+    # TODO factor in check of parallel edges. For now, just convert to digraph
+    G = nx.DiGraph(G)
     # Travel times must be whole numbers -  round values if not whole numbers
     for x in G.edges:
         G.edges[x][G_weight] = round(G.edges[x][G_weight])
     
-    # Find the source and sink demands and append to graph G
-    G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points = nearest_nodes(
-        G=G, res_points=res_points, dest_points=dest_points, G_demand=G_demand)
+    # if snapping destination parcels to nearest singular node only
+    if dest_method == 'single':
+        # Find the source and sink demands and append to graph G
+        G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points = nearest_nodes(
+            G=G, res_points=res_points, dest_points=dest_points, G_demand=G_demand)
 
+        # create artificial sink node with calculated total demand
+        #    All sinks will go to this demand in order to balance equation
+        G.add_nodes_from([(99999999, {G_demand: positive_demand})])
+        # add edges from sinks to this artificial node
+        for x in unique_dest_nodes:
+            kwargs = {f"{G_weight}": 0}
+            G.add_edge(x, 99999999, **kwargs)
 
-    # create artificial sink node with calculated total demand
-    #    All sinks will go to this demand in order to balance equation
-    G.add_nodes_from([(99999999, {G_demand: positive_demand})])
-    # add edges from sinks to this artificial node
-    for x in unique_dest_nodes:
-        kwargs = {f"{G_weight}": 0}
-        G.add_edge(x, 99999999, **kwargs)
+    elif dest_method == 'multiple':
+        # Find the source and sink demands and append to graph G
+        G, unique_origin_nodes, unique_dest_nodes_list, positive_demand, shared_nodes, res_points, dest_parcels = nearest_nodes_vertices(G=G, res_points=res_points, dest_parcels=dest_parcels, G_demand=G_demand)
+        # add artifical source node
+        G.add_nodes_from([(0, {G_demand: positive_demand*-1})])
+        # add edge from artifical source node to real source nodes with 0 weight and capacity equal to demand
+        sums=0
+        for unique_node in unique_origin_nodes:
+            sums -= G.nodes[unique_node][G_demand]
+            kwargs = {f"{G_weight}": 0, f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}  # TODO: KWARGS
+            G.add_edge(0, unique_node, **kwargs)
+            # since we added an artificial source node, all original source nodes must have a zero demand
+            G.nodes[unique_node][G_demand]=0
+
+        # add the super_sink that everything goes to 
+        G.add_nodes_from([(99999999, {G_demand: positive_demand})])
+
+        # identify the destination nodes, and create artifical sink edges
+        # need to relate the nodes that are nearest to corners of parcels with the dest_points to associate the appropriate capacity to 
+        for idx, dest_parcel in dest_parcels.iterrows():
+            dest_node = dest_points[dest_points.geometry.within(dest_parcel.geometry)]
+            #since we could have multiple dest nodes within a single boundary (multiple resources located at same parcel) need to iterate through dest_node
+            for i, node in dest_node.iterrows():
+                # add the dest node to the graph using OSMID as its ID
+                # TODO: explore option about plotting with physical lines
+                # x = node.geometry.x
+                # y = node.geometry.y
+                # G.add_nodes_from([(node['osmid'], {'demand': 0, 'x':x, 'y':y})])
+                G.add_nodes_from([(node['osmid'], {G_demand: 0})])
+
+                # add links from nearest intersections to parcel centroid
+                for nearest_intersection in unique_dest_nodes_list[idx]:
+                    kwargs = {G_weight: 0, G_capacity: 999999999}  # TODO: KWARGS
+                    G.add_edge(nearest_intersection, node['osmid'], **kwargs)
+
+                # add link from parcel centroid to super sink
+                # TODO: This is where I can specifically add capacities for each specific grocery store
+                # FOR NOW: just setting capacity to a high amount 
+                kwargs = {G_weight: 0, G_capacity: 999999999}
+                G.add_edge(node['osmid'], 99999999, **kwargs)
 
 
     # run the min_cost_flow function to retrieve FlowDict
@@ -502,7 +776,7 @@ def min_cost_flow_parcels(G='', res_points='', dest_points='', G_demand='demand'
         return None, None
 
 
-def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity', G_weight='travel_time', G_demand='demand'):
+def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity', G_weight='travel_time', G_demand='demand', dest_method='single', dest_parcels=None, ignore_capacity=False):
     '''
     Find maximum flow with minimum cost of a network between residential parcels and a given resource.
     
@@ -515,7 +789,6 @@ def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity',
     is equal to the number of residential parcels that are close to that intersection. This way the maximum flow ends up being the maximum number
     of households.
 
-
     :param G: Graph network. Will be converted to DiGraph in function
     :type G: networkx.Graph [Multi, MultiDi, Di]
     :param res_points: Point locations of all of the residential parcels
@@ -526,6 +799,12 @@ def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity',
     :type G_capacity: string
     :param G_weight: name of attribute in G refering to edge weights, *Default='travel_time'* 
     :type G_weight: string  
+    :param dest_method: either 'multiple' or 'single', determines snapping mechanism for destination points, if it uses multiple vertices or just the nearest vertice
+    :type dest_method: string
+    :param dest_parcels: If dest_method =='multiple', need the destination resource parcels as an input
+    :type dest_parcels: geopandas.GeoDataFrame
+    :param ignore_capacity: if True, road link capacities will be set to infinity. If False, original road capacities are used
+    :type ignore_capacity: bool
     :returns: 
         - **flow_dictionary**, dictionary of dictionaries keyed by nodes for edge flows
         - **cost_of_flow**, integer, total cost of all flow. If weight/cost is travel time, this is the total time for everyone to reach the resource (seconds).
@@ -535,32 +814,81 @@ def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity',
 
     '''
 
+    # for many functions to work, graph needs to be a digraph (NOT a multidigraph) i.e., no parallel edges
+    # TODO factor in check of parallel edges. For now, just convert to digraph
+    G = nx.DiGraph(G)
+
+    # Based on input, change capacities 
+    if ignore_capacity is True:
+        nx.set_edge_attributes(G, 999999999999, name=G_capacity)
+
     # Travel times must be whole numbers - just round values
     for x in G.edges:
         G.edges[x][G_weight] = round(G.edges[x][G_weight])
 
-    # Find the source and sink demands and append to graph G
-    G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points = nearest_nodes(
-        G=G, res_points=res_points, dest_points=dest_points, G_demand=G_demand)
+    if dest_method == 'single':
+        # Find the source and sink demands and append to graph G
+        G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points = nearest_nodes(
+            G=G, res_points=res_points, dest_points=dest_points, G_demand=G_demand)
 
-    # add artifical source node
-    G.add_nodes_from([(0, {G_demand: positive_demand*-1})])
-    # add edge from artifical source node to real source nodes with 0 weight and capacity equal to demand
-    sums=0
-    for unique_node in unique_origin_nodes:
-        sums -= G.nodes[unique_node][G_demand]
-        kwargs = {f"{G_weight}": 0, f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}  # TODO: KWARGS
-        G.add_edge(0, unique_node, **kwargs)
-        # since we added an artificial source node, all original source nodes must have a zero demand
-        G.nodes[unique_node][G_demand]=0
-        
-    # create artificial sink node 
-    G.add_nodes_from([(99999999, {G_demand: positive_demand})])
-    # add edges from sinks to this artificial node
-    for x in unique_dest_nodes:
-        kwargs={f"{G_weight}":0}
-        G.add_edge(x, 99999999, **kwargs)
+        # add artifical source node
+        G.add_nodes_from([(0, {G_demand: positive_demand*-1})])
+        # add edge from artifical source node to real source nodes with 0 weight and capacity equal to demand
+        sums=0
+        for unique_node in unique_origin_nodes:
+            sums -= G.nodes[unique_node][G_demand]
+            kwargs = {f"{G_weight}": 0, f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}  # TODO: KWARGS
+            G.add_edge(0, unique_node, **kwargs)
+            # since we added an artificial source node, all original source nodes must have a zero demand
+            G.nodes[unique_node][G_demand]=0
+            
+        # create artificial sink node 
+        G.add_nodes_from([(99999999, {G_demand: positive_demand})])
+        # add edges from sinks to this artificial node
+        for x in unique_dest_nodes:
+            kwargs={f"{G_weight}":0}
+            G.add_edge(x, 99999999, **kwargs)
+    
+    elif dest_method == 'multiple':
+        # Find the source and sink demands and append to graph G
+        G, unique_origin_nodes, unique_dest_nodes_list, positive_demand, shared_nodes, res_points, dest_parcels = nearest_nodes_vertices(G=G, res_points=res_points, dest_parcels=dest_parcels, G_demand=G_demand)
+        # add artifical source node
+        G.add_nodes_from([(0, {G_demand: positive_demand*-1})])
+        # add edge from artifical source node to real source nodes with 0 weight and capacity equal to demand
+        sums=0
+        for unique_node in unique_origin_nodes:
+            sums -= G.nodes[unique_node][G_demand]
+            kwargs = {f"{G_weight}": 0, f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}  # TODO: KWARGS
+            G.add_edge(0, unique_node, **kwargs)
+            # since we added an artificial source node, all original source nodes must have a zero demand
+            G.nodes[unique_node][G_demand]=0
 
+        # add the super_sink that everything goes to 
+        G.add_nodes_from([(99999999, {G_demand: positive_demand})])
+
+        # identify the destination nodes, and create artifical sink edges
+        # need to relate the nodes that are nearest to corners of parcels with the dest_points to associate the appropriate capacity to 
+        for idx, dest_parcel in dest_parcels.iterrows():
+            dest_node = dest_points[dest_points.geometry.within(dest_parcel.geometry)]
+            #since we could have multiple dest nodes within a single boundary (multiple resources located at same parcel) need to iterate through dest_node
+            for i, node in dest_node.iterrows():
+                # add the dest node to the graph using OSMID as its ID
+                # TODO: explore option about plotting with physical lines
+                # x = node.geometry.x
+                # y = node.geometry.y
+                # G.add_nodes_from([(node['osmid'], {'demand': 0, 'x':x, 'y':y})])
+                G.add_nodes_from([(node['osmid'], {G_demand: 0})])
+
+                # add links from nearest intersections to parcel centroid
+                for nearest_intersection in unique_dest_nodes_list[idx]:
+                    kwargs = {G_weight: 0, G_capacity: 999999999}  # TODO: KWARGS
+                    G.add_edge(nearest_intersection, node['osmid'], **kwargs)
+
+                # add link from parcel centroid to super sink
+                # TODO: This is where I can specifically add capacities for each specific grocery store
+                # FOR NOW: just setting capacity to a high amount 
+                kwargs = {G_weight: 0, G_capacity: 999999999}
+                G.add_edge(node['osmid'], 99999999, **kwargs)
 
 
     # run the max_flow_min_cost function to retrieve FlowDict
@@ -572,6 +900,7 @@ def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity',
                                          _s=0,
                                          _t=99999999,
                                          capacity=G_capacity)
+                                  
     if max_flow == sums:
         access = 'Complete'
     else:
@@ -581,14 +910,17 @@ def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity',
 
 def plot_aoi(G='', res_parcels='', 
                     resource_parcels='', 
+                    background_edges=None,
                     edge_width=None, 
+                    edge_color=None,
                     bbox=None, 
                     loss_access_parcels=None, 
                     scalebar=False,
                     inundation=None, 
                     insets=None, 
                     save_loc=None,
-                    raster=None):
+                    raster=None,
+                    decomp_flow=False):
     '''
     Create a plot with commonly used features.
 
@@ -604,6 +936,8 @@ def plot_aoi(G='', res_parcels='',
     :type resource_parcels: geopandas.GeoDataframe
     :param edge_width: *Optional*, attribute of *G* to scale road edges by (*Default=None*).
     :type edge_width: string
+    :param edge_color: attribute in G to color edges. Designed to show max inundation on the road
+    :type edge_color: string
     :param bbox: set boundary of figures. If *None*, bbox set to max boundary of *G*. 
     :type bbox: geopandas.GeoDataframe
     :param lose_access_parcels: The residential parcels that can no longer access a resource (i.e., due to flooding) (*Default=None*).
@@ -617,13 +951,14 @@ def plot_aoi(G='', res_parcels='',
     :param save_loc: Location to save figure (*Default=None*).
     :type save_loc: string
     :param raster: raster of inundation extent
-    :type raster: .tif rile, use rasterio.open()
+    :type raster: .tif file, use rasterio.open()
+    :param decomp_flow: if True, plot residential parcels with color ramp symbolizing travel time
+    :type decomp_flow: bool
 
     :return: **fig**, the produced figure
     :rtype: matplotlib figure
 
     '''
-    
     
     # convert graph to gdf of edges and nodes
     G_gdf_edges = ox.graph_to_gdfs(G=G, nodes=False)
@@ -646,78 +981,159 @@ def plot_aoi(G='', res_parcels='',
                         total_bounds[2],
                         total_bounds[0])
 
-    fig, ax = plt.subplots(facecolor='white', figsize=(12, 12))
+    fig, ax = plt.subplots(facecolor='white', figsize=(12,12))
     ax.axis('off')
-
+    
     # plot roads, residential parcels, and resource parcels
-    res_parcels.plot(ax=ax, color='antiquewhite', edgecolor='tan')
-    resource_parcels.plot(ax=ax, color='cornflowerblue', edgecolor='royalblue')
+    # if decomp_flow is True, plot res parcels with scale bar to show travel times
+    if decomp_flow is True:
+        res_parcels.plot(ax=ax, color='tan') # alternative color is antiquewhite
+        # # IQR METHOD to mask impact of outliers
+        costs = sorted(res_parcels['cost_of_flow'].tolist())
+        costs = [x for x in costs if math.isnan(x)==False]
+        q1,q3,=np.percentile(costs, [25,75])
+        iqr=q3-q1
+        upper_bound=q3+(3*iqr)
+        res_parcels.loc[res_parcels['cost_of_flow']>=upper_bound, ['cost_of_flow']]=upper_bound
+        # res_parcels.plot(ax=ax, column='cost_of_flow',cmap='bwr', legend=True)
+        res_parcels.plot(ax=ax, column='cost_of_flow',cmap='bwr', legend=False)
+        # add colorbar
+        # ax_cbar = fig.colorbar(plt.cm.ScalarMappable(norm=colors.Normalize(vmin=0, vmax=upper_bound), cmap='bwr'),ax=ax,
+        #                         ticks=np.linspace(0,upper_bound,6))
+        
+        
+        #res_parcels.plot(ax=ax, column='cost_of_flow',cmap='bwr', scheme='natural_breaks',k=10, legend=True)
+    else:
+        res_parcels.plot(ax=ax, color='tan')# alternative color is antiquewhite
+    
+    # plot the resource parcels
+    resource_parcels.plot(ax=ax, color='mediumseagreen', edgecolor='darkgreen', linewidth=0.5)
 
-    #TODO: ADD FEATURE TO HIGHLIGHT NODES - USEFUL IN ORDER TO TRANSLATE RESULTS TO GRAPH QUICKLY WHILE TESTING 
-    # G_gdf_nodes.loc[[57],'geometry'].plot(ax=ax,color='red')
-    # G_gdf_nodes.loc[[56], 'geometry'].plot(ax=ax, color='green')
-    #### END TEST
-
+    # #TODO: ADD FEATURE TO HIGHLIGHT NODES - USEFUL IN ORDER TO TRANSLATE RESULTS TO GRAPH QUICKLY WHILE TESTING 
+    # G_gdf_nodes.loc[[6016], 'geometry'].plot(ax=ax, color='green')
+    # G_gdf_nodes.loc[[10727], 'geometry'].plot(ax=ax, color='green')
+    # G_gdf_nodes.loc[[7196], 'geometry'].plot(ax=ax, color='green')
+    # #### END TEST
 
     # option to plot loss of access parcels
     if loss_access_parcels is None:
         pass
     else:
-        loss_access_parcels.plot(ax=ax, color='firebrick', edgecolor='darkred')
+        loss_access_parcels.plot(ax=ax, color='saddlebrown')
 
     # plot background light gray roads
-    ox.plot.plot_graph(G,
-                       ax=ax,
-                       node_size=0,
-                       edge_color='lightgray',
-                       show=False,
-                       edge_linewidth=1,
-                       bbox=total_bounds)
+    # plot different background edges if value given
+    if background_edges is None:
+        ox.plot.plot_graph(G,
+                            ax=ax,
+                            node_size=0, node_color='black',
+                            edge_color='lightgray',
+                            show=False,
+                            edge_linewidth=1,
+                            bbox=total_bounds)
+    else:
+        ox.plot.plot_graph(background_edges,
+                            ax=ax,
+                            node_size=0, node_color='black',
+                            edge_color='lightgray',
+                            show=False,
+                            edge_linewidth=1,
+                            bbox=total_bounds)
 
+    # plot edges based on color (typically max inundation on the road)
+    if edge_color is None:
+        pass
+    else:
+        # extract the values to plot colors to
+        vals = pd.Series(nx.get_edge_attributes(G, edge_color))
+        # set the bounds of the color
+        bounds=[0,10,50,100,150,200,250,300,350,400,500,600,vals.dropna().max()]
+        
+        #define the colormap
+        cmap = plt.cm.Blues  
+
+        # extract all colors from the .jet map
+        cmaplist = [cmap(i) for i in range(cmap.N)]
+        # force the first color entry to be clear and only show underlying roads
+        cmaplist[0] = (.5, .5, .5, 0.0)
+
+        # create the new cmap
+        cmap = mpl.colors.LinearSegmentedColormap.from_list(
+            'Custom cmap', cmaplist, cmap.N)
+
+        bounds=[0,10,150,300,600,vals.dropna().max()]
+        cmap = (mpl.colors.ListedColormap(['lightgray', 'paleturquoise','deepskyblue', 'royalblue', 'black']))
+
+        # normalize the colors and create mapping color object
+        norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
+        cm_map = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+        color_series=vals.map(cm_map.to_rgba)
+
+        # TODO: incorporate into single plot, for now just create a second figure for the scale bar
+        fig2, ax2 = plt.subplots(figsize=(6, 1))
+        fig2.subplots_adjust(bottom=0.5)
+        fig.colorbar( mpl.cm.ScalarMappable(cmap=cmap, norm=norm),
+                        cax=ax2,
+                        ticks=bounds,
+                        orientation='horizontal',
+                        label='Max Inundation on Road (mm)')
+
+
+        ox.plot_graph(G,
+                      ax=ax,
+                      node_size=0, node_color='black',
+                      edge_color=color_series,
+                      show=False,
+                      edge_linewidth=1.,
+                      bbox=total_bounds)
+
+    # plot edges based on width
     if edge_width is None:
         pass
     else:
-
         flow_dict = nx.get_edge_attributes(G, edge_width)
         flows = []
         for x in flow_dict:
             flows.append(flow_dict[x])
         unique_flows = np.unique(flows).tolist()
         unique_flows.pop(0)
-
         old_min = min(unique_flows)
         old_max = max(unique_flows)
         new_min = 1
-        new_max = 7
+        new_max = 5
 
-        for flow in unique_flows:
-            new_value = (((flow - old_min) * (new_max - new_min)) /
-                         (old_max - old_min)) + new_min
+        # TODO: could add user inputs to assign values here
+        # plotting each scaled width is too much, must bin into groups of 100
+        bounds = np.linspace(1,max(unique_flows), num=new_max+1)
+        widths = np.linspace(new_min, new_max, num=new_max)
 
-            # the following is selection of graph nodes and edges natively
-            # having trouble plotting this for unknown reason though
-            # selected_edges = [(u, v, e)
-            #                  for u, v, e in G.edges(data=True) if e[edge_width] == flow]
+        # previous width determination method => scale each to new min/max
+        # for flow in unique_flows:
+        #     new_value = (((flow - old_min) * (new_max - new_min)) /
+        #                  (old_max - old_min)) + new_min
+        
+        for idx, width in enumerate(widths):
 
             # select edges of gdf based on flow value
-            selected_edges = G_gdf_edges[G_gdf_edges[edge_width] == flow]
-            sub = ox.graph_from_gdfs(gdf_edges=selected_edges,
-                                     gdf_nodes=G_gdf_nodes)
-
-            ox.plot.plot_graph(sub,
-                               ax=ax,
-                               node_size=0,
-                               edge_color='black',
-                               show=False,
-                               edge_linewidth=new_value,
-                               bbox=total_bounds)
+            selected_edges = G_gdf_edges[(G_gdf_edges[edge_width] >= bounds[idx]) & (G_gdf_edges[edge_width] <= bounds[idx+1])]
+            if len(selected_edges) > 0:
+                sub = ox.graph_from_gdfs(gdf_edges=selected_edges,
+                                        gdf_nodes=G_gdf_nodes)
+                
+                ox.plot.plot_graph(sub,
+                                ax=ax,
+                                node_size=0,
+                                edge_color='black',
+                                show=False,
+                                edge_linewidth=width,
+                                bbox=total_bounds)
 
     # optional plot inundation raster
     if inundation is None:
         pass
     else:
         # Choose colormap
-        cmap = pl.cm.Blues
+        cmap = plt.cm.Blues
         # Get the colormap colors
         my_cmap = cmap(np.arange(cmap.N))
         # Set alpha
@@ -725,8 +1141,11 @@ def plot_aoi(G='', res_parcels='',
         my_cmap[0][3] = 0
         # Create new colormap
         my_cmap = ListedColormap(my_cmap)
-        show(raster, ax=ax, cmap=my_cmap, zorder=100)
-
+        # BUG: inundation plot kills figure sometimes - too big?
+        print('plotting raster')
+        show(inundation, ax=ax, cmap=my_cmap, zorder=100)
+        print('raster plotted')
+    
     # optional plot inset boundaries
     if insets is None:
         pass
@@ -823,145 +1242,148 @@ def summary_function(G=''):
     return(num_edges, num_nodes, fig)
 
 
-def inundate_network(G='', CRS=32614, path='', inundation=''):
+def inundate_network(G, path, inundation, G_capacity='capacity',G_width='width',G_speed='speed_kph',G_length='length',pp=4, name='AOI_Graph_Inundated'):
     '''
     Create a new graph network based on the imapct of an inundation layer.
 
-    Currently - An inundation layer is overlayed on a graph network. The maximum depth that intersects each road segment (within a given 
-    distance based on the type of road, **this needs to become a parameter and should be customizable**). That maximum depth is then equated 
-    to a decrease in speed and/or capacity on that entire road segment (**also needs attention** because water on a road segment might only impact
-    poritions of that segment). 
+    Currently - An inundation layer is overlayed on a graph network. The maximum depth that intersects each road segment (within a given distance based on the type of road). That maximum depth is then equated to a decrease in speed and capacity on that entire road segment.
 
-    This function adds attributes including:
+    This function adds attributes to the graph network including including:
 
-    - max_inundation
-    - inundation_class
-    - inundation_capacity
-    - inundation_speed_kph
-    - inundation_travel_time
+    - max_inundation_mm, the maximum inundation in milimeters
+    - inundation_capacity_{mod}, the reduced capacity of the road segement
+    - kph_{mod}, the reduced speed of the road segment
+    - inundation_travel_time_{mod}, the new travel time of the road segment
+
+    For inundation_capacity_, kph_, and inundation_travel_time_, there are three seperate occurances of each attribute with the suffix mod, agr, or con refering to the moderate, aggressive, or conservative depth-disruption equation is used in its calculation. All are quadratically decreasing depending on the maximum allowable road depth which are 300, 150, or 600 respectively. Any road segments with a greater depth of water on a road segement that these values has a travel time and capacity set equal to 0.
+
+    This function also relies on parallel processing. Zonal statistics for each road segment is time consuming, but also independent of each other and therefore is easily parallelized. In one test, a single thread took 10 minutes to process 36,000 edges. The same study area took less than 3 minutes to process with 4 threads. 
     
-    **Important Note** - There are a number of methodologies in which this can be accomplished, and others need to be explored further. The 
-    documenation listed must be updated regularly whenever changes are made to reflect current options of this function. Just a few things that need
-    to be addressed include:
+    **Important Note** - There are a number of methodologies in which this can be accomplished, and others need to be explored further. The documenation listed must be updated regularly whenever changes are made to reflect current options of this function. Just a few things that need to be addressed include:
 
-    - customizable road widths
-    - customizable impacts - based on the literature
     - impact on partial segments compared to entire segment
 
-
-    :param G: The graph network
+    :param G: The graph network. Should have projected coordinates.
     :type G: networkx.Graph [Multi, MultiDi, Di]
-    :param CRS: Coordinate reference system to conduct overlay in. *Default=32614, eqivalent to UTM14N*
-    :type CRS: int
-    :param path: File path to save output graph network to.
+    :param path: File path to save output graph network to. Will have the name 'AOI_Graph_Inundated'
     :type path: string
     :param inundation: File path to inundation raster .tif
     :type inundation: string
+    :param eq: either 'conservative', 'moderate', or 'aggresive', refers to which inundation depth-disruption equation to implement *Default='moderate'*
+    :type eq: string
+    :param G_capacity: graph attribute refering to road capacities. Capacity has units of vehicles per lane per hour *Default='capacity'* 
+    :type G_capacity: string
+    :param G_width: graph attribute refering to road width. Width has units of meters *Default='width'* 
+    :type G_width: string
+    :param G_speed: graph attribute refering to free flow road speed limit. Speed has units of km per hour *Default='speed'* 
+    :type G_speed: string
+    :param G_length: graph attribute refering to length of road segments. Length has units of meters *Default='length'* 
+    :type G_length: string
+    :param pp: number of threads to use in parallel processing
+    :type pp: int
 
-    :return: **inundated_G**, the impacted graph network.
+    :return: **inundated_G**, the impacted graph network. Will have new edge attributes of 'max_inundation', 'inundation_capacity', 'inundation_speed_kph', and 'inundation_travel_time'
     :rtype: networkx.Graph [Multi, MultiDi, Di]
     
     '''
-    
+    # convert graph to nodes and edges
     nodes, edges = ox.graph_to_gdfs(G)
+    # Set buffer geometry of edges gdf based on road width
+    edges['buffer_geometry'] = edges.buffer(distance=edges[G_width], cap_style=2)
+    edges.set_geometry(col='buffer_geometry', drop='geometry, inplace=True')
+    # edges['buffer_geometry'].to_file(
+    #     '/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/test_edges.shp')
 
-    # need to set a CRS for the edges to plot properly (UNITS FOR BUFFER)
-    edges = edges.to_crs(epsg=CRS)  # WGS84/UTM 14N
-    nodes = nodes.to_crs(epsg=CRS)
-    # B/C map is in meters, buffer will also be in meters
-    # Each road has different number of lanes and therefore diferent buffer
-    # Set width variables from intuition:
-    # average lane width is 3.7-meter in the US, for now use generic # of lanes
-    lane_width = 3.7  # meters, standard for Interstate highway system
-    motorway_w = lane_width*6/2
-    primary_w = lane_width*4/2
-    secondary_w = lane_width*2/2
-    tertiary_w = lane_width*2/2
-    residential_w = lane_width*2/2
-    motorway_link_w = lane_width*1/2
-    primary_link_w = lane_width*1/2
-    secondary_link_w = lane_width*1/2
-    # set conditions for relate
-    conditions = [
-        edges['highway'] == 'motorway',
-        edges['highway'] == 'primary',
-        edges['highway'] == 'secondary',
-        edges['highway'] == 'tertiary',
-        edges['highway'] == 'residential',
-        edges['highway'] == 'motorway_link',
-        edges['highway'] == 'primary_link',
-        edges['highway'] == 'secondary_link',
-    ]
-    # set choices for relate
-    choices = [motorway_w,
-               primary_w,
-               secondary_w,
-               tertiary_w,
-               residential_w,
-               motorway_link_w,
-               primary_link_w,
-               secondary_link_w]
-    # relate road type to lane/ buffer width
-    edges['buffer_width'] = np.select(conditions, choices, default=lane_width)
-    # buffer roads with flat end caps: buffer geometry is set as new attribute
-    edges['buffer_geometry'] = edges.buffer(distance=edges['buffer_width'],
-                                            cap_style=2)
-    # zonal stats returns a dictionary, we only want to keep the value
-    # This is function that relates maximum flood depth to each road segment
-    edges['max_inundation'] = [x['max'] for x in
-                               zonal_stats(edges['buffer_geometry'],
-                                           inundation,
-                                           stats='max')]
-    # set flood classification attribute/column
-    # TODO FOR NOW: Use paper depth classifications, needs to be changed to an input
-    flood_classes = [0, 1, 2, 3, 4, 5, 6]
-    bounds = [0.01, 0.15, 0.29, 0.49, 0.91, 1.07]
+    # BEGIN PARALLEL PROCESSING
+    # geometry column number
+    geo_col_num = edges.columns.get_loc("geometry")
+    # the individual inundation zonal statistic task
+    def inundate_zs(n):
+        return zonal_stats(edges.iat[n,geo_col_num], inundation, stats='max')
+    # create the sequence of numbers for each edge
+    n=range(0,len(edges))
+    # create a pool of workers and run the function inundate_zs for each zone
+    # map() function creates the background batches
+    pool=Pool(pp)
+    results=pool.map(inundate_zs, n)
+    # close the pool
+    pool.close()
+    # END PARALLEL PROCESSING
 
-    for idx, f_class in enumerate(flood_classes):
-        if idx == 0:
-            edges.loc[edges['max_inundation'] < bounds[0],
-                      'inundation_class'] = f_class
-        elif idx == len(flood_classes)-1:
-            edges.loc[edges['max_inundation'] > bounds[-1],
-                      'inundation_class'] = f_class
-        else:
-            edges.loc[(edges['max_inundation'] > bounds[idx-1]) &
-                      (edges['max_inundation'] <= bounds[idx]),
-                      'inundation_class'] = f_class
+    # convert results to list - if None, where raster doesn't intersect shapefile, replace with 0
+    results_as_list = [0 if d[0]['max'] is None else round(d[0]['max']*1000/10)*10 for d in results]
+    # relate back to edges geodataframe
+    edges['max_inundation_mm'] = results_as_list
+    
+    # reduction equation options
+    # conservative -> 0.0002415w**2 - 0.2898w + 86.94
+    # moderate     -> 0.0009w**2 - 0.5529w + 86.9448
+    # aggressive   -> 0.003864w**2 - 1.1592w + 86.94
 
-    # Relate inundation class to decrease in speed
-    # create new inundated_capacity, inundation_speed, inundation_tavel_time
-    edges['inundation_capacity'] = 999999
-    edges.loc[edges['inundation_class'] >= 3,
-              'inundation_capacity'] = 0
-    # if inundation class is 0, speed remains the same
-    edges.loc[edges['inundation_class'] == 0,
-              'inundation_speed_kph'] = edges['speed_kph']
+    # CALCULATE THE REDUCTION IN SPEEDS AND SUBSEQUENT TRAVEL TIMES FOR CONSERVATIVE, MODERATE, AND AGGRESSIVE SCENARIOS
+    # calcualte percentage of speed (PSR) remaining - replace with 0 if greater than the low points
+    # Moderate
+    edges.loc[edges['max_inundation_mm']>=300, 'PSR_mod'] = 0
+    edges.loc[edges['max_inundation_mm'] < 300, 'PSR_mod'] = (0.0009*edges['max_inundation_mm']**2 - 0.5529*edges['max_inundation_mm'] + 86.9448)/86.9448
+    # Conservative
+    edges.loc[edges['max_inundation_mm']>=600, 'PSR_con'] = 0
+    edges.loc[edges['max_inundation_mm'] < 600, 'PSR_con'] = (0.0002415*edges['max_inundation_mm']**2 - 0.2898*edges['max_inundation_mm'] + 86.94)/86.94
+    # Aggressive
+    edges.loc[edges['max_inundation_mm']>=150, 'PSR_agr'] = 0
+    edges.loc[edges['max_inundation_mm'] < 150, 'PSR_agr'] = (0.003864*edges['max_inundation_mm']**2 - 1.1592*edges['max_inundation_mm'] + 86.94)/86.94
 
-    # if inundation  class is 1, speed reduced to 25% maximum
-    edges.loc[edges['inundation_class'] == 1,
-              'inundation_speed_kph'] = edges['speed_kph']*0.25
+    opts=['mod','con','agr']
+    for opt in opts:
+        # calculate the inundation speed based on reduction equation
+        edges[f'kph_{opt}']=edges[G_speed]*edges[f'PSR_{opt}']
+        # calculate inundation travel time in seconds
+        edges[f'inundation_travel_time_{opt}'] = edges[G_length]/(edges[f'kph_{opt}']/60/60*1000)
+        # replace travel time infs with 0 (when speed reduced to 0)
+        edges.loc[edges[f'inundation_travel_time_{opt}'] == np.inf,f'inundation_travel_time_{opt}'] = 0
+        # Create inundation capacity. if speed is reduced to zero, setting capacity equal to 0 because it cannot support travel
+        edges[f'inundation_capacity_{opt}'] = edges[G_capacity]
+        edges.loc[edges[f'kph_{opt}'] == 0, f'inundation_capacity_{opt}'] = 0
 
-    # if inundation  class is 2, speed reduced to 5% maximum
-    edges.loc[edges['inundation_class'] == 2,
-              'inundation_speed_kph'] = edges['speed_kph']*0.05
 
-    # if inundation is anything above 2, set speed to 0
-    edges.loc[edges['inundation_class'] >= 3,
-              'inundation_speed_kph'] = 0
+    # edges.loc[edges['max_inundation_mm']>=307.167, 'PSR_mod'] = 0
+    # edges.loc[edges['max_inundation_mm'] < 307.167, 'PSR_mod'] = (0.0009*edges['max_inundation_mm']**2 - 0.5529*edges['max_inundation_mm'] + 86.9448)/86.9448
+    # # Conservative
+    # edges.loc[edges['max_inundation_mm']>=600, 'PSR_con'] = 0
+    # edges.loc[edges['max_inundation_mm'] < 600, 'PSR_con'] = (0.0002415*edges['max_inundation_mm']**2 - 0.2898*edges['max_inundation_mm'] + 86.94)/86.94
+    # # Aggressive
+    # edges.loc[edges['max_inundation_mm']>=150, 'PSR_agr'] = 0
+    # edges.loc[edges['max_inundation_mm'] < 150, 'PSR_agr'] = (0.003864*edges['max_inundation_mm']**2 - 1.1592*edges['max_inundation_mm'] + 86.94)/86.94
 
-    # calculate inundation travel time, replace inf with 0
-    edges['inundation_travel_time'] = edges['length']/(edges[
-        'inundation_speed_kph']/60/60*1000)
-    edges.loc[edges['inundation_travel_time'] == np.inf,
-              'inundation_travel_time'] = 0
+    # # calculate the inundation speed based on reduction equation
+    # edges['kph_mod'] = edges[G_speed]*edges['PSR_mod']
+    # edges['kph_con'] = edges[G_speed]*edges['PSR_con']
+    # edges['kph_agr'] = edges[G_speed]*edges['PSR_agr']
+    
+    # # calculate inundation travel time in seconds
+    # edges['inundation_travel_time_mod'] = edges[G_length]/(edges['kph_mod']/60/60*1000)
+    # edges['inundation_travel_time_con'] = edges[G_length]/(edges['kph_con']/60/60*1000)
+    # edges['inundation_travel_time_agr'] = edges[G_length]/(edges['kph_agr']/60/60*1000)
+
+    # # replace travel time infs with 0 (when speed reduced to 0)
+    # edges.loc[edges['inundation_travel_time_mod'] == np.inf,'inundation_travel_time_mod'] = 0
+    # edges.loc[edges['inundation_travel_time_con'] == np.inf,'inundation_travel_time_con'] = 0
+    # edges.loc[edges['inundation_travel_time_agr'] == np.inf,'inundation_travel_time_agr'] = 0
+
+    # # Create inundation capacity. if speed is reduced to zero, setting capacity equal to 0 because it cannot support travel
+    # edges['inundation_capacity_mod'] = edges[G_capacity]
+    # edges['inundation_capacity_con'] = edges[G_capacity]
+    # edges['inundation_capacity_agr'] = edges[G_capacity]
+    # edges.loc[edges['kph_mod'] == 0, 'inundation_capacity_mod']=0
+    # edges.loc[edges['kph_con'] == 0, 'inundation_capacity_con']=0
+    # edges.loc[edges['kph_agr'] == 0, 'inundation_capacity_agr'] = 0
+
     # save edited graph
     new_graph = ox.graph_from_gdfs(nodes, edges)
-    save_2_disk(G=new_graph, path=path, name='AOI_Graph_Inundated')
+    save_2_disk(G=new_graph, path=path, name=name)
     return (new_graph)
 
 
-def flow_decomposition(G='', res_points='', dest_points='',res_locs='',dest_locs='', G_demand='demand', G_capacity='capacity', G_weight='travel_time'):
+def flow_decomposition(G='', res_points='', dest_points='',res_parcels='',dest_parcels='', G_demand='demand', G_capacity='capacity', G_weight='travel_time', dest_method='single'):
     '''
     Given a network, G, decompose the maximum flow (w/ minimum cost) into individual flow paths.
 
@@ -980,16 +1402,18 @@ def flow_decomposition(G='', res_points='', dest_points='',res_locs='',dest_locs
     :type res_points: geopandas.GeoDataFrame
     :param dest_points: Point locations of all of the resources the residential parcels are to be routed to
     :type dest_points: geopandas.GeoDataFrame
-    :param res_locs: Polygons of all residential parcels
-    :type res_locs: geopandas.GeoDataFrame
-    :param dest_locs: Polygons of all of a specific destination/resource
-    :type dest_locs: geopandas.GeodataFrame
+    :param res_parcels: Polygons of all residential parcels
+    :type res_parcels: geopandas.GeoDataFrame
+    :param dest_parcels: Polygons of all of a specific destination/resource
+    :type dest_parcels: geopandas.GeodataFrame
     :param G_demand: name of attribuet in G refering to node demand, *Default='demand*
     :type G_demand: string
     :param G_capacity: name of attribute in G refering to edge capacities, *Default='capacity'* 
     :type G_capacity: string
     :param G_weight: name of attribute in G refering to edge weights, *Default='travel_time'* 
     :type G_weight: string      
+    :param dest_method: either 'single' or 'multiple', determines nearest_node methodology to use whether it is the single closest node or the nearest nodes to corners of parcels
+    :type dest_method: string
 
     :returns:
         - **decomposed_paths**, dictionary of dictionaries keyed by unique source nodes
@@ -1001,47 +1425,112 @@ def flow_decomposition(G='', res_points='', dest_points='',res_locs='',dest_locs
 
 
     '''
-    
-    # Run max_flow_parcels to get flow dictionary
-    flow_dict, flow_cost, max_flow, access = max_flow_parcels(G=G, res_points=res_points, dest_points=dest_points, G_capacity=G_capacity, G_weight=G_weight, G_demand=G_demand)
-    
     # Travel times must be whole numbers -  round values if not whole numbers
     for x in G.edges:
-        G.edges[x][G_weight] = round(G.edges[x][G_weight])
-
-    #Run nearest_nodes to get unique origins and destinations
-    G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points = nearest_nodes(
-        G=G, res_points=res_points, dest_points=dest_points, G_demand=G_demand)
+            G.edges[x][G_weight] = round(G.edges[x][G_weight])
     
-    # Create artificial source and sink
-    # add artifical source node
-    G.add_nodes_from([(0, {G_demand: positive_demand*-1})])
-    # add edge from artifical source node to real source nodes with:
-    #   edge weight = 0
-    #   node demand = 0
-    #   edge capacity = source demand -> the flow from that original source node
-    sums = 0
-    for unique_node in unique_origin_nodes:
-        sums -= G.nodes[unique_node][G_demand]
-        # TODO: KWARGS
-        kwargs = {f"{G_weight}": 0,
-                  f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}
-        G.add_edge(0, unique_node, **kwargs)
-        G.nodes[unique_node][G_demand] = 0
+    G=copy.deepcopy(G)
 
-    # create artificial sink node with 0 weight
-    G.add_nodes_from([(99999999, {G_demand: positive_demand})])
-    for x in unique_dest_nodes:
-        kwargs={f"{G_weight}":0}
-        G.add_edge(x, 99999999, **kwargs)
+    if dest_method=='single':
+        # Run max_flow_parcels to get flow dictionary
+        flow_dict, flow_cost, max_flow, access = max_flow_parcels(G=G, 
+                                                                    res_points=res_points, 
+                                                                    dest_points=dest_points, 
+                                                                    G_capacity=G_capacity, 
+                                                                    G_weight=G_weight, 
+                                                                    G_demand=G_demand)
+        
+        #Run nearest_nodes to get unique origins and destinations
+        G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points = nearest_nodes(
+            G=G, res_points=res_points, dest_points=dest_points, G_demand=G_demand)
+        
+        # Create artificial source and sink
+        # add artifical source node
+        G.add_nodes_from([(0, {G_demand: positive_demand*-1})])
+        # add edge from artifical source node to real source nodes with:
+        #   edge weight = 0
+        #   node demand = 0
+        #   edge capacity = source demand -> the flow from that original source node
+        sums = 0
+        for unique_node in unique_origin_nodes:
+            sums -= G.nodes[unique_node][G_demand]
+            # TODO: KWARGS
+            kwargs = {f"{G_weight}": 0,
+                    f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}
+            G.add_edge(0, unique_node, **kwargs)
+            G.nodes[unique_node][G_demand] = 0
 
+        # create artificial sink node with 0 weight
+        G.add_nodes_from([(99999999, {G_demand: positive_demand})])
+        for x in unique_dest_nodes:
+            kwargs={f"{G_weight}":0}
+            G.add_edge(x, 99999999, **kwargs)
 
-    # Create intermediate graph from max_flow_parcels dictionary, consisting of only edges that have a flod going across them
+    if dest_method == 'multiple':
+        # Run max_flow_parcels to get flow dictionary
+        flow_dict, flow_cost, max_flow, access = max_flow_parcels(G=G,
+                                                                  res_points=res_points,
+                                                                  dest_points=dest_points,
+                                                                  G_capacity=G_capacity,
+                                                                  G_weight=G_weight,
+                                                                  G_demand=G_demand,
+                                                                  dest_method='multiple',
+                                                                  dest_parcels=dest_parcels)
+        
+        #Run nearest_nodes to get unique origins and destinations
+        G, unique_origin_nodes, unique_dest_nodes_list, positive_demand, shared_nodes, res_points, dest_parcels, dest_points = nearest_nodes_vertices(
+            G=G, res_points=res_points, dest_parcels=dest_parcels, G_demand=G_demand, dest_points=dest_points)
+
+        # add artifical source node
+        G.add_nodes_from([(0, {G_demand: positive_demand*-1})])
+        # add edge from artifical source node to real source nodes with 0 weight and capacity equal to demand
+        sums = 0
+        for unique_node in unique_origin_nodes:
+            sums -= G.nodes[unique_node][G_demand]
+            # TODO: KWARGS
+            kwargs = {f"{G_weight}": 0,
+                      f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}
+            G.add_edge(0, unique_node, **kwargs)
+            # since we added an artificial source node, all original source nodes must have a zero demand
+            G.nodes[unique_node][G_demand] = 0
+
+        # add the super_sink that everything goes to
+        G.add_nodes_from([(99999999, {G_demand: positive_demand})])
+
+        # identify the destination nodes, and create artifical sink edges
+        # need to relate the nodes that are nearest to corners of parcels with the dest_points to associate the appropriate capacity to
+        for idx, dest_parcel in dest_parcels.iterrows():
+            dest_node = dest_points[dest_points.geometry.within(
+                dest_parcel.geometry)]
+            #since we could have multiple dest nodes within a single boundary (multiple resources located at same parcel) need to iterate through dest_node
+            for i, node in dest_node.iterrows():
+                # add the dest node to the graph using OSMID as its ID
+                # TODO: explore option about plotting with physical lines
+                # x = node.geometry.x
+                # y = node.geometry.y
+                # G.add_nodes_from([(node['osmid'], {'demand': 0, 'x':x, 'y':y})])
+                G.add_nodes_from([(node['osmid'], {G_demand: 0})])
+
+                # add links from nearest intersections to parcel centroid
+                for nearest_intersection in unique_dest_nodes_list[idx]:
+                    # TODO: KWARGS
+                    kwargs = {G_weight: 0, G_capacity: 999999999}
+                    G.add_edge(nearest_intersection, node['osmid'], **kwargs)
+
+                # add link from parcel centroid to super sink
+                # TODO: This is where I can specifically add capacities for each specific grocery store
+                # FOR NOW: just setting capacity to a high amount
+                kwargs = {G_weight: 0, G_capacity: 999999999}
+                G.add_edge(node['osmid'], 99999999, **kwargs)
+
+        
+    # Create intermediate graph from max_flow_parcels dictionary, consisting of only edges that have a flow going across them
     # Set the allowable flow of each edge in intermediate graph to the flow going across that edge in original max_flow_parcels solution
     G_inter = nx.DiGraph()
+    G=nx.DiGraph(G)
     for i in flow_dict:
         for j in flow_dict[i]:
-            if flow_dict[i][j] >0:
+            if flow_dict[i][j] > 0:
                 kwargs = {f"{G_weight}": G[i][j][G_weight],
                         'allowable_flow': flow_dict[i][j]}
                 G_inter.add_edge(i,j,**kwargs)
@@ -1086,114 +1575,179 @@ def flow_decomposition(G='', res_points='', dest_points='',res_locs='',dest_locs
         sink = path[-2]
         if source in decomposed_paths.keys():
             decomposed_paths[source]['Sink'].append(sink)
-            decomposed_paths[source]['Path'].append(path[1:-1])
+            decomposed_paths[source]['Path'].append([' '.join(map(str, l)) for l in [path[1:-1]]])
             decomposed_paths[source]['Flow'].append(limiting_flow)
             decomposed_paths[source]['Cost Per Flow'].append(cost)
             decomposed_paths[source]['Number of Unique Paths'] += 1
             decomposed_paths[source]['Total Flow'] += limiting_flow  
         else:
-            decomposed_paths[source] = {'Source': [source], 'Sink': [sink], 'Path': [path[1:-1]],'Flow': [limiting_flow], 'Cost Per Flow': [cost],'Number of Unique Paths':1, 'Total Flow': limiting_flow}
+            decomposed_paths[source] = {'Source': [source], 'Sink': [sink], 'Path': [' '.join(map(str, l)) for l in [path[1:-1]]], 'Flow': [limiting_flow], 'Cost Per Flow': [cost], 'Number of Unique Paths': 1, 'Total Flow': limiting_flow}
 
-        # Add sink insights, keyed by the sink   
-        if sink in sink_insights.keys():
-            sink_insights[sink]['Number of unique paths'] +=1
-            sink_insights[sink]['Total flow w/o walking']+= limiting_flow
-            sink_insights[sink]['Total flow w/ walking']+= limiting_flow
-        else:
-            sink_insights[sink] = {'Number of unique paths': 1, 'Total flow w/o walking': limiting_flow, 'Total flow w/ walking': limiting_flow + len(
-            res_points.loc[res_points['nearest_node'] == sink])}
-    # End flow decomposition algorithm
+        # Add sink insights, keyed by the sink
+        if dest_method == 'single': 
+            if sink in sink_insights.keys():
+                sink_insights[sink]['Number of unique paths'] +=1
+                sink_insights[sink]['Total flow w/o walking']+= limiting_flow
+                sink_insights[sink]['Total flow w/ walking']+= limiting_flow
+            else:
+                sink_insights[sink] = {'Number of unique paths': 1, 'Total flow w/o walking': limiting_flow, 'Total flow w/ walking': limiting_flow + len(res_points.loc[res_points['nearest_node'] == sink])}
+           
+        if dest_method == 'multiple':
+            if sink in sink_insights.keys():
+                sink_insights[sink]['Number of unique paths'] +=1
+                sink_insights[sink]['Total flow w/o walking']+= limiting_flow
+                sink_insights[sink]['Total flow w/ walking']+= limiting_flow 
+            else:
+                near_nodes = list(map(int, dest_points.loc[dest_points['osmid'] == sink, 'nearest_nodes'].iloc[0].split(' ')))
+                sink_insights[sink] = {'Number of unique paths': 1, 'Total flow w/o walking': limiting_flow, 'Total flow w/ walking': limiting_flow + len(res_points.loc[res_points['nearest_node'].isin(near_nodes)])}
 
     # Begin relating decomposition results to outputs 
+    # 1. first determine the unique origin nodes that don't have a path and mark accordingly
+    # 2. Find all the unique origin nodes with a single path to a single destination, mark accordingly
+    # 3. Find all unique origin nodes with mulitple paths to multiple/same desitnation, mark accordingly
+    # 4. For shared nodes (nearest node is origin and destination), we consider these the walkable nodes
 
-    # Relating origin results:
+    # 1. Nodes with no path 
+    nodes_to_pop = []
     for node in unique_origin_nodes:
         # Create empty lists of possible sinks, paths, and cost_per_flow
-        sinks=[]
-        paths=[]
-        cost_per_flow=[]
         # extract decomposition information -> if decomp_info doesn't exist, that means unique origin node has NO path to sink
         try:
             decomp_info = decomposed_paths[node]
         except: 
             missing_paths = True
         else:
-            decomp_info = decomposed_paths[node]
             missing_paths=False
         # for each path from a unique origin to any sink, need to append lists of possible attributes
         if missing_paths is True:
             # If no decomp_info, source node is not serviceable -> unreachable
             res_points.loc[res_points['nearest_node'] == node,['service']] = 'no'
-            res_points.loc[res_points['nearest_node']
-                           == node, ['cost_of_flow']] = np.NaN
-
-        else:
-            # If multiple paths from one source to sink exist, need to create lists that contain a representative distribution of possible paths
-            for idx, pathway in enumerate(decomp_info['Sink']):
-                flow=decomp_info['Flow'][idx]
-                sinks.extend([decomp_info['Sink'][idx]] for x in range(flow))
-                path = decomp_info['Path'][idx]
-                path= ' '.join(str(e) for e in path)
-                paths.extend(path for x in range(flow))
-                cost_per_flow.extend([decomp_info['Cost Per Flow'][idx]] for x in range(flow))
+            res_points.loc[res_points['nearest_node'] == node, ['cost_of_flow']] = np.NaN
+            nodes_to_pop.append(node)
             
-            # Create subset of res_points that have the source node as their nearest_node
-            subset = res_points.loc[res_points['nearest_node'] == node]
+    # 2. Nodes with a single path
+    unique_origin_nodes = unique_origin_nodes.tolist()
+    for node in nodes_to_pop:
+        unique_origin_nodes.remove(node)
 
-            # for each of the res_points in the subset, randomly select an appropriate sink, path, and cost
-            for index, res in subset.iterrows():
-                i=random.choice(range(len(sinks)))
-                sink_pop = sinks.pop(i)
-                path_pop = paths.pop(i)
-                cost_pop = cost_per_flow.pop(i)
+    # create subset of decomposed_paths whose number of unique paths is equal to 1
+    decomp_subset = dict((k, decomposed_paths[k]) for k in unique_origin_nodes if decomposed_paths[k]['Number of Unique Paths'] == 1)
 
-                # Append the res_points geodataframe with the appropriate information include:
-                    # The sink that resident goes to
-                    # the path that resident takes 
-                    # the cost of that path
-                    # that it is NaN walkable -> see shared nodes
-                    # that it is serviceable -> can reach destination
-                res_points.loc[res_points['PROP_ID']==res['PROP_ID'],['sink']] = sink_pop
-                res_points.loc[res_points['PROP_ID']==res['PROP_ID'],['path']] = [path_pop]
-                res_points.loc[res_points['PROP_ID'] ==
-                            res['PROP_ID'],['cost_of_flow']] = cost_pop
-                res_points.loc[res_points['PROP_ID'] ==
-                            res['PROP_ID'],['walkable?']] = np.NaN
-                res_points.loc[res_points['PROP_ID'] ==
-                            res['PROP_ID'],['service']] = 'yes'
+    # convert decomp_subset to dataframe
+    decomp_subset_df = pd.DataFrame.from_dict(decomp_subset, orient='index',columns=['Source', 
+                                                                                        'Sink', 
+                                                                                        'Path',
+                                                                                        'Flow', 
+                                                                                        'Cost Per Flow',
+                                                                                        'Number of Unique Paths', 
+                                                                                        'Total Flow']).reset_index()
     
-    # For shared_nodes, we consider these res_points walkable for sharing the same nearest node
-    for node in shared_nodes:
-        res_points.loc[res_points['nearest_node'] == node,['walkable?']] = 'yes'
-        res_points.loc[res_points['nearest_node'] == node,['service']] = 'yes'
-        res_points.loc[res_points['nearest_node'] == node,['cost_of_flow']] = 0
-        res_points.loc[res_points['nearest_node'] == node,['sink']] = node
-        res_points.loc[res_points['nearest_node'] == node,['path']] = 0
-        # Append the dest_points geodataframe with walking nodes to accurately represent flow totals
-        dest_points.loc[dest_points['nearest_node'] == node, ['total_flow_w_walking']] = len(res_points.loc[res_points['nearest_node'] == node])
+    # set the rows the appropriate dtypes before merge
+    decomp_subset_df['source'] = decomp_subset_df['Source'].str[0]
+    decomp_subset_df['sink'] = decomp_subset_df['Sink'].str[0]
+    decomp_subset_df['cost_of_flow'] = decomp_subset_df['Cost Per Flow'].str[0]
+    decomp_subset_df['walkable?'] = np.NaN
+    decomp_subset_df['service'] = 'yes'
+    decomp_subset_df['path'] = decomp_subset_df['Path'].str[0]
 
-    # Append dest_nodes with appropriate flow information
-    for node in unique_dest_nodes:
-        try: 
-            total_flow = sink_insights[node]['Total flow w/o walking']
-        except:
-            no_flow=True
-        else: 
-            total_flow = sink_insights[node]['Total flow w/o walking']
-            no_flow=False
-        if no_flow is True:
-            dest_points.loc[dest_points['nearest_node'] == node, ['total_flow_wo_walking']] = 0
-        else:
-            dest_points.loc[dest_points['nearest_node'] == node, ['total_flow_wo_walking']] = total_flow
-            dest_points.loc[dest_points['nearest_node'] == node, ['total_flow_w_walking']] += total_flow
+    # Merge the appropriate attributes
+    res_points = res_points.merge(decomp_subset_df[['source','sink','cost_of_flow','walkable?','service','path']], how='left', left_on='nearest_node', right_on='source')
 
-    # Sync the res_points with res_locs data
-    res_locs = res_locs.merge(res_points[['PROP_ID','nearest_node','service','sink','path','cost_of_flow','walkable?']], on='PROP_ID')
-    # Sync the dest_points with dest_locs data
-    dest_locs = dest_locs.merge(dest_points[['PROP_ID', 'nearest_node','total_flow_wo_walking','total_flow_w_walking']], on='PROP_ID')
+    # combine similar columns and remove unnecessary ones
+    res_points['cost_of_flow'] = res_points['cost_of_flow_y'].combine_first(res_points['cost_of_flow_x'])
+    res_points['service'] = res_points['service_y'].combine_first(res_points['service_x'])
+    res_points.drop(columns=['cost_of_flow_y','cost_of_flow_x','service_y','service_x'], inplace=True)
+
+    # 3. Nodes with multiple paths
+    # create subset of decomposed_paths whose number of unique paths is greater than 1
+    decomp_subset = dict((k, decomposed_paths[k]) for k in unique_origin_nodes if decomposed_paths[k]['Number of Unique Paths'] > 1)
+
+    # convert decomp_subset to dataframe
+    decomp_subset_df = pd.DataFrame.from_dict(decomp_subset, orient='index', columns=['Source',
+                                                                                      'Sink',
+                                                                                      'Path',
+                                                                                      'Flow',
+                                                                                      'Cost Per Flow',
+                                                                                      'Number of Unique Paths',
+                                                                                      'Total Flow']).reset_index()
+
+    # for each unique origin that has multiple paths, extract each unique sink path and flow
+    for ix, row in decomp_subset_df.iterrows():
+        for idx, pathway in enumerate(row['Path']):
+            flow = int(row['Flow'][idx])
+            source = int(row['Source'][0])
+            sink = row['Sink'][idx]
+            path = pathway
+            cost_per_flow = row['Cost Per Flow'][idx]
+
+            # randomly select res_points with same source and no path information
+            # the syntax for query is a bit odd: needed @ to reference variable and find nans using !=
+            query = res_points.query("nearest_node == @source and sink != sink").sample(n=flow).index
+            res_points.loc[query, ['sink']] = sink
+            res_points.loc[query, ['path']] = path
+            res_points.loc[query, ['cost_of_flow']] = cost_per_flow
+            res_points.loc[query, ['walkable?']] = np.NaN
+            res_points.loc[query, ['service']] = 'yes'
+
+    #4. set shared nodes to walkable and set remaining features
+    res_points.loc[res_points['nearest_node'].isin(shared_nodes), ['walkable?']] = 'yes'
+    res_points.loc[res_points['nearest_node'].isin(shared_nodes), ['service']] = 'yes'
+    res_points.loc[res_points['nearest_node'].isin(shared_nodes), ['cost_of_flow']] = 0
+    res_points.loc[res_points['nearest_node'].isin(shared_nodes), ['sink']] = res_points['nearest_node']
+    res_points.loc[res_points['nearest_node'].isin(shared_nodes), ['path']] = 0
+
+    # convert sink_insights to dataframe
+    sink_insights_df = pd.DataFrame.from_dict(sink_insights, orient='index', columns=['Number of unique paths',
+                                                                                        'Total flow w/o walking',
+                                                                                        'Total flow w/ walking']).reset_index()
+
+    # append dest poitns with appropriate flow information
+    if dest_method == 'single':
+        dest_points = dest_points.merge(sink_insights_df, how='left', left_on='nearest_node', right_on='index')
+    if dest_method == 'multiple':
+        dest_points = dest_points.merge(sink_insights_df, how='left', left_on='osmid', right_on='index')
+       
+    # Spatial join the res_parcels/res_points and dest_parcels/dest_points data
+    res_parcels = gpd.sjoin(res_parcels,res_points)
+    dest_parcels = gpd.sjoin(dest_parcels, dest_points)
+  
+    # metrics
+    # convert to list of flows
+    cost_list = sorted(res_parcels['cost_of_flow'].tolist())
+    #remove nans 
+    cost_list = [x for x in cost_list if math.isnan(x)==False]
+    # calculate interquartile range
+    q1,q3,=np.percentile(cost_list, [25,75])
+    iqr=q3-q1
+    upper_bound=q3+(3*iqr)
+    # calculate percentage of flows that can be considered a major outlier
+    perc_outlier = sum(x>=upper_bound for x in cost_list)/positive_demand *100
+    # create list with 'masked' outliers
+    cost_list_wo = [upper_bound if x >= upper_bound else x for x in cost_list]
+    # median flow cost(excluding including)
+    med_cost_in = np.median(cost_list)
+    # total flow cost(excluding including)
+    total_cost_in = sum(cost_list)
+    # average flow cost(excluding including)
+    mean_cost_in = np.mean(cost_list)
+    # median flow (excluding outliers)
+    med_cost_ex = np.median(cost_list_wo)
+    # total flow cost(excluding outliers)
+    total_cost_ex = sum(cost_list_wo)
+    # average flow cost(excluding outliers)
+    mean_cost_ex = np.mean(cost_list_wo)
+
+    print(f'percent of flow major outlier: {perc_outlier}')
+    print(f'cost of flow with outliers: {total_cost_in}')
+    print(f'cost of flow without outliers: {total_cost_ex}')
+    print(f'average cost of flow with outliers: {mean_cost_in}')
+    print(f'average cost of flow without outliers: {mean_cost_ex}')
+    print(f'median cost of flow with outliers: {med_cost_in}')
+    print(f'median cost of flow without outliers: {med_cost_ex}')
+
 
     # return the decomposed paths dict of dict, the sink_insights dict of dict, and the res_locs/dest_locs geodataframes
-    return decomposed_paths, sink_insights, res_locs, dest_locs
+    return decomposed_paths, sink_insights, res_parcels, dest_parcels
 
 
 def shortestPath(origin, capacity_array, weight_array):
@@ -1259,9 +1813,9 @@ def shortestPath(origin, capacity_array, weight_array):
     return (backnode, costlabel)
 
 
-def shortestPath_heap(origin, capacity_array, weight_array, adjlist):
+def shortestPath_heap(origin, capacity_array, weight_array, adjlist, destination=False):
     """
-    This method finds the shortest path from origin to all other nodesin the network.
+    This method finds the shortest path from origin to all other nodes in the network.
     Uses a binary heap priority que in an attempt to speed up the shortestPath function.
     Shortest path algorithm utilized is Dijkstra's.
     going to use built in function in python called heapq
@@ -1315,6 +1869,11 @@ def shortestPath_heap(origin, capacity_array, weight_array, adjlist):
                     heapq.heappush(pq, (costlabel[node_j], node_j))
         # Step 5: add i to f_label # TODO: I think this is indented correctly now but should test - was originally operating within last else statement
         f_label.append(node_i)
+
+        # STEP 6: if destination found AND finalized 
+        if destination is not False:
+            if node_j == destination and node_j in f_label:
+                break
 
     backnode = np.asarray(backnode)
     costlabel = np.asarray(costlabel)
@@ -1475,15 +2034,47 @@ def mod_search(source, flow, numnodes, capacity_array):
 ###### I DON'T THINK I NEED maxFlow OR mod_search ######
 
 
+
+# PARALLELIZATION FUNCTIONS USED IN TRAFFIC ASSIGNMENT
+def initial_feasible_flow_parallel(n):
+
+    backnode, costlabel = shortestPath_heap(origin=n[0], 
+                                                capacity_array=capacity_array, 
+                                                weight_array=weight_array, 
+                                                adjlist=adjlist, 
+                                                destination=n[2])
+
+    path, cost = pathTo_mod(backnode=backnode, 
+                            costlabel=costlabel, 
+                            origin=n[0], 
+                            destination=n[2])
+    return path
+    
+
+def SPTT_parallel(n):
+    backnode, costlabel = shortestPath_heap(origin=n[0], 
+                                            capacity_array=capacity_array, 
+                                            weight_array=weight_array_iter,
+                                            adjlist=adjlist, 
+                                            destination=n[2])
+    path, cost = pathTo_mod(backnode=backnode, 
+                                costlabel=costlabel, 
+                                origin=n[0], 
+                                destination=n[2])
+    return (path, cost)
+
+
 def traffic_assignment(G,
                         res_points, 
-                        dest_points,  
+                        dest_points,
+                        dest_parcels,  
                         G_capacity='capacity', 
                         G_weight='travel_time', 
                         algorithm='path_based', 
                         method='CFW',
                         link_performance='BPR',
-                        termination_criteria=['iter',0]):
+                        termination_criteria=['iter',0],
+                        dest_method='single'):
     """
     Solves the static traffic assignment problem based using algorithms and termination criteria from user inputs.
 
@@ -1512,7 +2103,9 @@ def traffic_assignment(G,
     :param res_points: Location of the residential parcel points
     :type res_points: geopandas Geodataframe
     :param dest_points: Location of the destination parcel points
-    :type dest_points: geopandas Geodataframe
+    :type dest_points: geopanda. Geodataframe
+    :param dest_parcels: Technically only needed if dest_method == 'multiple', geodataframe of destination parcels
+    :type dest_parcels: gepandas.Geodataframe
     :param G_capacity: Attribute of G that is theoretical road link capacity
     :type G_capacity: string
     :param G_weight: Attribute of G that is free flow travel time across link
@@ -1525,7 +2118,8 @@ def traffic_assignment(G,
     :type link_performance: string
     :param termination_criteria: The criteria type and comparision number to stop iterations. Available criteria include AEC, iters, and RG
     :type termination_criteria: list, first element string and second element number
-
+    :param dest_method: either 'single' or 'multiple' determines snapping methodology for destination parcels, either single nearest node or multiple nearest nodes
+    :type dest_method: string
     :returns:
         - **G_output**, nx.Multigraph of road network with traffic assignment flow attribute, 'TA_Flow'
         - **AEC_list**, list of average access cost, AEC, values for each iteration
@@ -1542,29 +2136,33 @@ def traffic_assignment(G,
     #         - Akcelik function
     #         - Conical delay model
 
+    # Convert graph to digraph format
+    # TODO: Need to see if this is having an impact on the output
+    G = nx.DiGraph(G)
+
+    # BUG fix? Remove all edges with 0 capacity
+    G=copy.deepcopy(G)
+    no_cap_edges = list(filter(lambda e: e[2] == 0, (e for e in G.edges.data(G_capacity))))
+    no_cap_ids = list(e[:2] for e in no_cap_edges)
+    G.remove_edges_from(no_cap_ids)
 
     # Travel times must be whole numbers -  round values if not whole numbers
     for x in G.edges:
         G.edges[x][G_weight] = round(G.edges[x][G_weight])
 
-    # Convert graph to digraph format
-    # TODO: Need to see if this is having an impact on the output
-    G = nx.DiGraph(G)
-
     # Set variables that will be used as constants throughout algorithm 
     super_sink = 99999999
     super_origin = 0
-    artificial_weight = 999999999999999999
-    artificial_capacity = 999999999999999999
+    # Meets int32 byte criteria
+    artificial_weight = 999999999
+    artificial_capacity = 999999999
 
-    # Theoretical capacity for each edge based on how many lanes there are
-    # TODO: FOR NOW, SET AS A CONSTANT - I believe typically 2300 vehicles/hour per lane is a standard - need to research tho
-    # This should also most likely be done before this section anyways
-    nx.set_edge_attributes(G, values=20, name=G_capacity)
-    
     # Set BPR alpha and beta constants
     nx.set_edge_attributes(G, values=0.15, name='alpha')
     nx.set_edge_attributes(G, values=4, name='beta')
+
+    # original node list - used to relate flow back to graph representation
+    og_node_list = [num for num in range(0,len(G.nodes))]
 
     # PREPROCESSING STEPS: 
     # a.   Determine sources/sinks, 
@@ -1573,123 +2171,146 @@ def traffic_assignment(G,
     # d.   create list of ordered nodes
     # e.   Convert capacity, weight, alpha, and beta arrays
 
-    # a. Determine sources and sinks
-    G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points = nearest_nodes(G=G, 
-                                                                                                                        res_points=res_points, 
-                                                                                                                        dest_points=dest_points, 
-                                                                                                                        G_demand='demand')
+    if dest_method == 'single':
+        # a. Determine sources and sinks
+        G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points = nearest_nodes(G=G, 
+                                                                                                                            res_points=res_points, 
+                                                                                                                            dest_points=dest_points, 
+                                                                                                                            G_demand='demand')
 
-    # b_1. Add an artifical 0 node to maintain other nodes positions
-    #   Doesn't actually need attributes since not connected, but filling for continuity sake
-    G.add_node(super_origin, **{G_weight: artificial_weight, G_capacity: 0})
+        # b_1. Add an artifical 0 node to maintain other nodes positions
+        #   Doesn't actually need attributes since not connected, but filling for continuity sake
+        G.add_node(super_origin, **{G_weight: artificial_weight, G_capacity: 0})
 
-    # b_2. Add artifical edge from each destination node to the artifical sink with zero cost and maximum capacity
-    # This is to allow minimum cost routing to whatever resource - destination of OD pair can change based on cost
-    for idx, sink in enumerate(unique_dest_nodes):
-        G.add_edge(sink, super_sink, **{G_weight:0, G_capacity:artificial_capacity})
+        # b_2. Add artifical edge from each destination node to the artifical sink with zero cost and maximum capacity
+        # This is to allow minimum cost routing to whatever resource - destination of OD pair can change based on cost
+        for idx, sink in enumerate(unique_dest_nodes):
+            G.add_edge(sink, super_sink, **{G_weight:0, G_capacity:artificial_capacity})
 
-    # c. Create OD_matrix and add artifical edge from each origin to super_sink with extreme weight and capacity to capture loss of service 
-    #    2 reasons to add origin->super_sink edge: 
-    #   (1): Can build in elastic demand cost if people are priced out of accessign resource, or can set to arbitrarily high value to
-    #   (2): By having artifical route, can always send max flow w/o considering if accessible - if path goes through artifical link, than no access when cost is arbitrarily high
-    OD_matrix = np.empty([len(unique_origin_nodes),3])
-    for idx,x in enumerate(unique_origin_nodes):
-        OD_matrix[idx][0] = x                            # origin nodes
-        OD_matrix[idx][1] = G.nodes[x]['demand']*-1      # flow associated with the origin node
-        OD_matrix[idx][2] = len(G.nodes())-1             # destination node (when nodes reordered for numpy array, it has a value of length-1 (b/c of artifical origin 0 ))
-        G.add_edge(x, super_sink, **{G_weight: artificial_weight, G_capacity: artificial_capacity})
+        # c. Create OD_matrix and add artifical edge from each origin to super_sink with extreme weight and capacity to capture loss of service 
+        #    2 reasons to add origin->super_sink edge: 
+        #   (1): Can build in elastic demand cost if people are priced out of accessign resource, or can set to arbitrarily high value to
+        #   (2): By having artifical route, can always send max flow w/o considering if accessible - if path goes through artifical link, than no access when cost is arbitrarily high
+        OD_matrix = np.empty([len(unique_origin_nodes),3])
+        for idx,x in enumerate(unique_origin_nodes):
+            OD_matrix[idx][0] = x                            # origin nodes
+            OD_matrix[idx][1] = G.nodes[x]['demand']*-1      # flow associated with the origin node
+            OD_matrix[idx][2] = len(G.nodes())-1             # destination node (when nodes reordered for numpy array, it has a value of length-1 (b/c of artifical origin 0 ))
+            G.add_edge(x, super_sink, **{G_weight: artificial_weight, G_capacity: artificial_capacity})
 
-    # d. Sort nodes in proper order
-    #   This should in theory then preserve saying node '2' in array is node '2' in network g, especially with adding the artifical node, 0
-    #   also rename the nodes in graph
-    G = nx.convert_node_labels_to_integers(G, 0, ordering="sorted", label_attribute='old_label')
-    nodes_in_order = sorted(G.nodes())
-    
+        # d. Sort nodes in proper order
+        #   This should in theory then preserve saying node '2' in array is node '2' in network g, especially with adding the artifical node, 0
+        #   also rename the nodes in graph
+        G = nx.convert_node_labels_to_integers(G, 0, ordering="sorted", label_attribute='old_label')
+        nodes_in_order = sorted(G.nodes())
+
+    elif dest_method == 'multiple':
+        # a. Determine sources and sinks
+        G, unique_origin_nodes, unique_dest_nodes_list, positive_demand, shared_nodes, res_points, dest_parcels, dest_points = nearest_nodes_vertices(
+            G=G, res_points=res_points, dest_parcels=dest_parcels, dest_points=dest_points, G_demand='demand')
+
+        # b_1. Add an artifical 0 node to maintain other nodes positions
+        #   Doesn't actually need attributes since not connected, but filling for continuity sake
+        G.add_node(super_origin, **{G_weight: artificial_weight, G_capacity: 0})
+
+        # b_2. Add artifical edges from vertices around destinations to aggregate points than to artifical sink with 0 cost and max capacity
+        # This is to allow minimum cost routing to whatever resource - destination of OD pair which can change based on cost
+        # identify the destination nodes, and create artifical sink edges
+        # need to relate the nodes that are nearest to corners of parcels with the dest_points to associate the appropriate capacity to 
+        
+        # artificial node id tracker - useful in maintianing compatability with dtype
+        dest_node_ids=99999998
+
+        for idx, dest_parcel in dest_parcels.iterrows():
+            dest_node = dest_points[dest_points.geometry.within(dest_parcel.geometry)]
+            #since we could have multiple dest nodes within a single boundary (multiple resources located at same parcel) need to iterate through dest_node
+            for i, node in dest_node.iterrows():
+                dest_node_ids-=1
+                # add the dest node to the graph using OSMID as its ID
+                G.add_nodes_from([(dest_node_ids, {'demand': 0})])
+
+                # add links from nearest intersections to parcel centroid
+                for nearest_intersection in unique_dest_nodes_list[idx]:
+                    kwargs = {G_weight: 0, G_capacity: artificial_capacity}
+                    G.add_edge(nearest_intersection, dest_node_ids, **kwargs)
+
+                # add link from parcel centroid to super sink
+                # TODO: This is where I can specifically add capacities for each specific grocery store
+                # FOR NOW: just setting capacity to a high amount 
+                kwargs = {G_weight: 0, G_capacity: artificial_capacity}
+                G.add_edge(dest_node_ids, super_sink, **kwargs)
+
+        
+        # c. Create OD_matrix and add artifical edge from each origin to super_sink with extreme weight and capacity to capture loss of service 
+        #    2 reasons to add origin->super_sink edge: 
+        #   (1): Can build in elastic demand cost if people are priced out of accessign resource, or can set to arbitrarily high value to
+        #   (2): By having artifical route, can always send max flow w/o considering if accessible - if path goes through artifical link, than no access when cost is arbitrarily high
+        # initialize OD_matrix        
+        OD_matrix = np.zeros([len(unique_origin_nodes),3])
+
+        for idx,x in enumerate(unique_origin_nodes):
+            # BUG: before adding to OD matrix, determine if a path even exists
+            if nx.has_path(G, x, super_sink) is False:
+                pass
+            else:
+                OD_matrix[idx][0] = x                            # origin nodes
+                OD_matrix[idx][1] = G.nodes[x]['demand']*-1      # flow associated with the origin node
+                OD_matrix[idx][2] = len(G.nodes())-1             # destination node (when nodes reordered for numpy array, it has a value of length-1 (b/c of artifical origin 0 ))
+                G.add_edge(x, super_sink, **{G_weight: artificial_weight, G_capacity: artificial_capacity})
+
+        # delete OD_matrix rows that we no longer need
+        indexList = np.where(~OD_matrix.any(axis=1))[0]
+        OD_matrix = np.delete(OD_matrix, indexList, axis=0)
+
+
+        # d. Sort nodes in proper order
+        #   This should in theory then preserve saying node '2' in array is node '2' in network g, especially with adding the artifical node, 0
+        #   also rename the nodes in graph
+        G = nx.convert_node_labels_to_integers(G, 0, ordering="sorted", label_attribute='old_label')
+        nodes_in_order = sorted(G.nodes())
+
+    # set global variables for parallel processing
+    global capacity_array
+    global weight_array
+    global adjlist
+    global weight_array_iter
+    print('making arrays')
     # convert to capacity and weight arrays
-    capacity_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight=G_capacity, nonedge=-1)    # array of theoretical link capacities
-    weight_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight=G_weight, nonedge=-1)        # array of free flow weights (costs)
-    alpha_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='alpha', nonedge=-1) 
-    beta_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='beta', nonedge=-1)
+    capacity_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight=G_capacity, nonedge=-1, dtype=np.int32)    # array of theoretical link capacities
+    weight_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight=G_weight, nonedge=-1, dtype=np.int32)        # array of free flow weights (costs)
+    #alpha_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='alpha', nonedge=-1) 
+    #beta_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='beta', nonedge=-1)
+    print('arrays made')
+
+    # #TODO - needs to be implmeneted ASAP    
+    # # convert arrays to sparse arrays to see if that reduces memory usage
+    # weight_array_s = sparse.coo_array(weight_array)
+    # capacity_array_s = sparse.csr_array(capacity_array)
+    # print(f'weight_array bytes: {weight_array.nbytes}, {weight_array_s.data.nbytes}')
+    # print(f'capacity_array bytes: {capacity_array.nbytes}, {capacity_array_s.data.nbytes}')
+
+
     # TODO: Check the timing on this -> I believe if I actually used a full array (above) instead of constant (below) the compute time would be significantly longer
     alpha_array = 0.15
-    beta_array=4
-    #weight_array_star = np.copy(weight_array)  # copy of free flow weights, what I am going to be changin with each iteration
-    
+    beta_array = 4
     # create adjacency list - faster for some functions to use this instead of matrix
-    adjlist = defaultdict(list)
-    for i in range(capacity_array.shape[0]):
-        for j in range(capacity_array.shape[0]):
-            if capacity_array[i][j] != -1:
-                adjlist[i].append(j)
+    # adjlist = defaultdict(list)
+    # for i in range(capacity_array.shape[0]):
+    #     for j in range(capacity_array.shape[0]):
+    #         if capacity_array[i][j] != -1:
+    #             adjlist[i].append(j)
 
+    # alternative method for creating adjacency list
+    adjlist = defaultdict(list)
+    row, col = np.where(capacity_array!=-1)
+    for i in range(len(row)):
+        adjlist[row[i]].append(col[i])
+    
     # set variables
-    #dest_id = len(G.nodes())-1                          # destination node
     sum_d = positive_demand                             # sum of the demand
     num_nodes = weight_array.shape[0]                   # number of noads
     node_list = [num for num in range(0, num_nodes)]    # list of all nodes
-
     ##################################################################################################################################
-    # EXAMPLE ARRAYS THAT WERE USED FOR TESTING PURPOSES
-
-    # Going to create an test network for building this function based on steve boyles textbox
-    # G = nx.DiGraph()
-    # G.add_nodes_from([0,1,2,3,4,5,6])
-    # G.add_edges_from([(1,3),(1,5),(5,6),(6,3),(2,5),(6,4),(2,4)])
-    # nx.set_edge_attributes(G,10,'Weight')
-    # nx.set_edge_attributes(G,15000,'Capacity')
-    # # OD Pair: 1-3: 5000, 2-4: 10000
-    # OD_matrix = np.array([[1,5000,3],
-    #                     [2,10000,4]])
-    # # BPR function = 10 + x/100
-
-    # nodes_in_order = sorted(G.nodes())
-    # capacity_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='Capacity', nonedge=-1)
-    # weight_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='Weight', nonedge=-1)
-
-    # # set variables for link algorithm
-    # dest_id = len(G.nodes())-1
-    # numnodes = len(G.nodes())
-    # sum_d = 15000
-
-    # This is another network example specifically for bush-based algorithms FROM TEXTBOOK
-    # G = nx.DiGraph()
-    # G.add_nodes_from([0,1,2,3,4,5,6,7,8,9])
-    # G.add_edges_from([(1,2),(2,3),(4,1),(4,2),(4,5),(5,2),(5,6),(6,3),(7,4),(7,8),(8,5),(8,9),(9,6)])
-    # attrs = {(1,2):{'Weight':4},(2,3):{'Weight':2},(4,1):{'Weight':4},(4,2):{'Weight':40},(4,5):{'Weight':2},(5,2):{'Weight':2},(5,6):{'Weight':2},
-    #                 (6,3):{'Weight':2},(7,4):{'Weight':2},(7,8):{'Weight':2},(8,5):{'Weight':2},(8,9):{'Weight':2},(9,6):{'Weight':2}}
-    # nx.set_edge_attributes(G,attrs)
-    # nx.set_edge_attributes(G,15000,'Capacity')
-    # # OD Pair: 1-3: 5000, 2-4: 10000
-    # OD_matrix = np.array([[7,10,3]])
-    # # BPR function depends on the link
-
-    # nodes_in_order = sorted(G.nodes())
-    # capacity_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='Capacity', nonedge=-1)
-    # weight_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='Weight', nonedge=-1)
-    # # set variables for link algorithm
-    # sum_d = 10
-
-    # This is another network example specifically for bush-based algorithms FROM NOTES
-    # G = nx.DiGraph()
-    # G.add_nodes_from([0,1,2,3,4,5,6,7,8,9])
-    # G.add_edges_from([(1,2),(1,4),(2,3),(2,5),(3,6),(4,5),(4,7),(5,6),(5,8),(6,9),(7,8),(8,9)])
-    # attrs = {(1,2):{'Weight':3},(1,4):{'Weight':3},(2,3):{'Weight':3},(2,5):{'Weight':5},(3,6):{'Weight':3},(4,5):{'Weight':5},(4,7):{'Weight':3},
-    #                 (5,6):{'Weight':5},(5,8):{'Weight':5},(6,9):{'Weight':3},(7,8):{'Weight':3},(8,9):{'Weight':5}}
-    # nx.set_edge_attributes(G,attrs)
-    # nx.set_edge_attributes(G,15000,'Capacity')
-    # # OD Pair: 1-3: 5000, 2-4: 10000
-    # OD_matrix = np.array([[4,1000,9],
-    #                       [1,1000,9]])
-    # # BPR function depends on the link
-
-    # nodes_in_order = sorted(G.nodes())
-    # capacity_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='Capacity', nonedge=-1)
-    # weight_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='Weight', nonedge=-1)
-    # # set variables for link algorithm
-    # sum_d = 2000
-
-    ################################################################################################################################
-
 
     # WRITE FUNCTIONS FOR CALCULATING BPR FUNCTIONS FOR WEIGHT ARRAY AND WEIGHT ARRAY DERIVATIVE
     # weight_array variable should remain the free flow time array
@@ -1760,14 +2381,17 @@ def traffic_assignment(G,
 
         returns: bisection zeta value
         """
+        print('calc x hat')
         x_hat = lambda_val*flow_array_star+(1-lambda_val)*flow_array
-
+        
+        print('calc x hat link performance')
         x_hat_link_performance = link_performance_function(capacity_array=capacity_array, 
                                                            flow_array=x_hat,
                                                            weight_array=weight_array,
                                                             eq=eq, 
                                                             alpha_array=alpha_array, 
                                                             beta_array=beta_array)
+        print('calc zeta')
 
         zeta = np.sum(x_hat_link_performance*(flow_array_star-flow_array))
 
@@ -1851,7 +2475,9 @@ def traffic_assignment(G,
         """Function to calculate topographic order on a bush."""
 
         # Find shortest path from origin to all locations - need to determine what nodes are unreachable 
-        backnode, costlabel = shortestPath(origin, bush, weight_array)
+        # BUG: check if shortestpath_heap actually works here
+        #backnode, costlabel = shortestPath(origin, bush, weight_array)
+        backnode, costlabel = shortestPath_heap(origin, capacity_array, weight_array, adjlist)
         # where backnode == -1, unreachable, and won't be considered in topological ordering 
         unreachable = [i for i,j in enumerate(backnode) if j == -1]
         unreachable.pop(unreachable.index(origin))
@@ -1913,7 +2539,6 @@ def traffic_assignment(G,
         return val
 
 
-
     # ALGORITHMS
     if algorithm == "link_based":
 
@@ -1924,22 +2549,43 @@ def traffic_assignment(G,
         # a. Create empty flow array 
         flow_array = np.zeros_like(capacity_array)
 
+        # BEGIN ORIGINAL NON PARALLEL VERSION 
         # b. Create initial feasible flow array
-        for x in OD_matrix:
-            origin = np.int(x[0])
-            flow = x[1]
-            destination = np.int(x[2])
-            
-            # calculate shortest path from an origin to all other locations
-            backnode, costlabel = shortestPath(origin=origin, capacity_array=capacity_array, weight_array=weight_array)
-            # determine path and cost from origin to super sink
-            path, cost = pathTo(backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
-
-            # update the flow array by iterating through the shortest paths just determined
-            i=0
-            for i in range(len(path)-1):
-                flow_array[path[i]][path[i+1]] += flow
-
+        # for x in OD_matrix:
+        #     origin = np.int(x[0])
+        #     flow = x[1]
+        #     destination = np.int(x[2])
+        #     # calculate shortest path from an origin to all other locations
+        #     #backnode, costlabel = shortestPath(origin=origin, capacity_array=capacity_array, weight_array=weight_array)
+        #     backnode, costlabel = shortestPath_heap(origin=origin, capacity_array=capacity_array, weight_array=weight_array, adjlist=adjlist, destination=destination)
+        #     # determine path and cost from origin to super sink
+        #     #path, cost = pathTo(backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
+        #     path, cost = pathTo_mod(backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
+        #     # update the flow array by iterating through the shortest paths just determined
+        #     for i in path:
+        #         flow_array[i[0]][i[1]] += flow
+        # END ORIGINAL NON PARALLEL VERSION
+  
+        # BEGIN PARALLEL PROCESSING
+        # set parallel processing variables
+        print('starting first parallel')
+        pp=8
+        n = [[np.int(OD_matrix[n][0]), OD_matrix[n][1], np.int(OD_matrix[n][2])] for n in range(0, len(OD_matrix))]
+        # initialize the pool
+        pool=Poolm(pp)
+        # map function
+        results = pool.map(initial_feasible_flow_parallel, n)
+        # close the pool
+        pool.close()
+        pool.join()
+        # edit the flow_array matrix
+        for idx, result in enumerate(results):
+            for i in result:
+                flow_array[i[0]][i[1]] += OD_matrix[idx][1]     
+        # END PARALLEL PROCESSING 
+        print('finished first parallel')
+        
+        
         # LINK BASED ALGORITHM: Within loop:
         # 1.    Recalculate weight_array (travel cost times) using BPR function and initial flow_array
         # 2.    Create empty kappa array to hold OD shortest path costs, and empty flow_array_star to hold new flows
@@ -1962,6 +2608,7 @@ def traffic_assignment(G,
         iter_val = True
         # begin loop
         while iter_val is True:
+            print(f'Begin iteration: {iter}')
             # 1. recalculate weight_array
             weight_array_iter = link_performance_function(capacity_array=capacity_array,
                                                             flow_array=flow_array,
@@ -1969,36 +2616,58 @@ def traffic_assignment(G,
                                                             eq=link_performance,
                                                             alpha_array=alpha_array,
                                                           beta_array=beta_array)
-
             # 2. Create empty kappa array and flow_array_star
-            kappa=np.zeros([1,np.shape(OD_matrix)[0]])
+            # TODO: I DON'T THINK KAPPA IS ACTUALLY USED-> I DON'T THINK KAPPA IS NEEDED??????? 
+            kappa = np.zeros([1, np.shape(OD_matrix)[0]])
             flow_array_star = np.zeros_like(capacity_array)
             # For shortest path travel time calculation (termination criteria)
             SPTT=0      
-            for idx, x in enumerate(OD_matrix):
-                origin = np.int(x[0])
-                destination = np.int(x[2])
-                flow = x[1]
-                # 3. Calculate shortest paths
-                backnode, costlabel = shortestPath(origin=origin, capacity_array=capacity_array, weight_array=weight_array_iter)
-                path, cost = pathTo(backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
-                # 4. Fill shorest path cost array, kappa
-                kappa[0][idx]=cost      
-                # For shortest path travel time calculation (termination criteria)
-                SPTT += cost*flow
+            # #BEGIN ORIGINAL CALC
+            # for idx, x in enumerate(OD_matrix):
+            #     origin = np.int(x[0])
+            #     destination = np.int(x[2])
+            #     flow = x[1]
+            #     # 3. Calculate shortest paths
+            #     backnode, costlabel = shortestPath_heap(origin=origin, 
+            #                                             capacity_array=capacity_array, 
+            #                                             weight_array=weight_array, 
+            #                                             adjlist=adjlist, 
+            #                                             destination=destination)
+            #     path, cost = pathTo_mod(backnode=backnode, 
+            #                                 costlabel=costlabel, 
+            #                                 origin=origin, 
+            #                                 destination=destination)
+            #     # 4. Fill shortest path cost array, kappa
+            #     kappa[0][idx]=cost      
+            #     # For shortest path travel time calculation (termination criteria)
+            #     SPTT += cost*flow
                 # 5. Update the flow array
-                i = 0
-                while i < len(path)-1:
-                    flow_array_star[path[i]][path[i+1]] += flow
-                    i += 1
-
+                # for i in path:
+                #     flow_array_star[i[0]][i[1]] += flow
+            # END ORIGINAL CALC
+            print(f'start iteration {iter} parallel process')
+            # BEGIN PARALLEL CALC
+            n = [[np.int(OD_matrix[n][0]), OD_matrix[n][1], np.int(OD_matrix[n][2])] for n in range(0, len(OD_matrix))]
+            pool=Poolm(pp)
+            results = pool.map(SPTT_parallel, n)
+            for idx, result in enumerate(results):
+                path, cost = result
+                flow = OD_matrix[idx][1]
+                SPTT += cost*flow
+                for i in path:
+                    flow_array_star[i[0]][i[1]] += flow
+            pool.close()
+            pool.join()
+            # END PARALLEL CALC
+            print(f'finish iteration {iter} parallel process')
             # Calculate termination variables
             TSTT = np.sum(np.multiply(flow_array, weight_array_iter))
             AEC = (TSTT-SPTT)/sum_d
             RG = TSTT/SPTT - 1
-
+            
+            print(f'calc lambda')
             # 6. Calculate Lambda using the method given 
-
+            
             if method == 'MSA':
                 # MSA
                 lambda_val = 1/(iter+2)
@@ -2113,6 +2782,7 @@ def traffic_assignment(G,
                 # set marker to pass for subsequent interations
                 CFW_marker = 1
 
+            print(f'shift flows')
             # 7. Shift flows
             flow_array = lambda_val*flow_array_star + (1-lambda_val)*flow_array
 
@@ -2123,12 +2793,12 @@ def traffic_assignment(G,
             RG_list.append(RG)
             iter += 1
 
+            print(f'termination criteria')
             # determine if iterations should continue
-            iter_val = termination_function(termination_criteria=termination_criteria, 
+            iter_val = termination_function(termination_criteria = termination_criteria, 
                                             iters = iter, 
-                                            AEC=AEC, 
-                                            RG=RG)
-
+                                            AEC = AEC, 
+                                            RG = RG)
     
     elif algorithm == 'path_based':
         # Specifically using Newton's Method of Gradient Projection (not to be confused with Projected Gradient)
@@ -2324,7 +2994,6 @@ def traffic_assignment(G,
                                             iters = iter, 
                                             AEC=AEC,
                                             RG=RG)
-
 
     elif algorithm == 'bush_based':
         
@@ -2703,26 +3372,36 @@ def traffic_assignment(G,
 
 
     # EDIT THE FINAL OUTPUTS
+    nx.set_edge_attributes(G, nx.get_edge_attributes(G, 'travel_time'), name='Weight_Array_Iter')
     # relate flow array back to network
     new_data= {}
-    for i in node_list:
-        for j in node_list:
+    for i in og_node_list:
+        for j in og_node_list:
             if flow_array[i][j] > 0:
-                new_data.update({(i,j):{'TA_Flow': flow_array[i][j]}})
+                new_data.update({(i, j): {'TA_Flow': flow_array[i][j], 'Weight_Array_Iter': weight_array_iter[i][j]}})
 
     # set edge attributes with new data
     nx.set_edge_attributes(G, new_data)
 
-    # remove artificial sources and sinks - the first and last node?
+    # remove artificial super source and sink
     G.remove_node(len(G.nodes())-1)
     G.remove_node(super_origin)
 
+    # if multiple dest method, remove the intermediate artifical links
+    if dest_method == 'multiple':
+        while len(list(G.nodes)) > len(og_node_list):
+            G.remove_node(len(G.nodes()))
     #TODO:  has to be multidigraph to save properly should adjust save function to represent this requirement
     G_output = nx.MultiDiGraph(G)
 
     # #TODO: Fix outputs - either add save option or remove and keep as seperate function - in scratch. This function should return the graph
-    # save_2_disk(G=G_output, path='/home/mdp0023/Documents/Codes_Projects/network_analysis/Network_Testing_Data',
-    #             name='AOI_Graph_Traffic_Assignment')
+    save_2_disk(G=G_output, path='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Graphs',
+                name='AN_Graph_Traffic_Assignment_No_Inundation')
 
-    
+    # delete global variables 
+    del capacity_array
+    del weight_array
+    del adjlist
+    del weight_array_iter
+
     return G_output, AEC_list, TSTT_list, SPTT_list, RG_list, iter

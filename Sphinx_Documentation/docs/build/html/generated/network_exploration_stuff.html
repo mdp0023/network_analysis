@@ -53,7 +53,7 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.flow_decomposition" title="network_exploration_stuff.flow_decomposition"><code class="xref py py-obj docutils literal notranslate"><span class="pre">flow_decomposition</span></code></a>([G, res_points, ...])</p></td>
 <td><p>Given a network, G, decompose the maximum flow (w/ minimum cost) into individual flow paths.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.inundate_network" title="network_exploration_stuff.inundate_network"><code class="xref py py-obj docutils literal notranslate"><span class="pre">inundate_network</span></code></a>([G, CRS, path, inundation])</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.inundate_network" title="network_exploration_stuff.inundate_network"><code class="xref py py-obj docutils literal notranslate"><span class="pre">inundate_network</span></code></a>([G, path, inundation])</p></td>
 <td><p>Create a new graph network based on the imapct of an inundation layer.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">maxFlow</span></code>(source, sink, numnodes, ...)</p></td>
@@ -71,43 +71,46 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.nearest_nodes" title="network_exploration_stuff.nearest_nodes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">nearest_nodes</span></code></a>([G, res_points, dest_points, ...])</p></td>
 <td><p>Return Graph with demand attribute based on snapping sources/sinks to nearest nodes (intersections).</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.parallel_edges" title="network_exploration_stuff.parallel_edges"><code class="xref py py-obj docutils literal notranslate"><span class="pre">parallel_edges</span></code></a>([G])</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.nearest_nodes_vertices" title="network_exploration_stuff.nearest_nodes_vertices"><code class="xref py py-obj docutils literal notranslate"><span class="pre">nearest_nodes_vertices</span></code></a>([G, res_points, ...])</p></td>
+<td><p>MODIFICATION OF NEAREST_NODES FUNCTION TO SNAP DEST PARCELS TO MULTIPLE NODES</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.parallel_edges" title="network_exploration_stuff.parallel_edges"><code class="xref py py-obj docutils literal notranslate"><span class="pre">parallel_edges</span></code></a>([G])</p></td>
 <td><p>Find parallel edges in graph network.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">pathTo</span></code>(backnode, costlabel, origin, destination)</p></td>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">pathTo</span></code>(backnode, costlabel, origin, destination)</p></td>
 <td><p></p></td>
 </tr>
-<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">pathTo_mod</span></code>(backnode, costlabel, origin, ...)</p></td>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">pathTo_mod</span></code>(backnode, costlabel, origin, ...)</p></td>
 <td><p>test pathTo function to output node-node pairs instead of list of nodes to avoid having to do loops elsewhere</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.plot_aoi" title="network_exploration_stuff.plot_aoi"><code class="xref py py-obj docutils literal notranslate"><span class="pre">plot_aoi</span></code></a>([G, res_parcels, resource_parcels, ...])</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.plot_aoi" title="network_exploration_stuff.plot_aoi"><code class="xref py py-obj docutils literal notranslate"><span class="pre">plot_aoi</span></code></a>([G, res_parcels, resource_parcels, ...])</p></td>
 <td><p>Create a plot with commonly used features.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.random_shortest_path" title="network_exploration_stuff.random_shortest_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">random_shortest_path</span></code></a>([G, res_points, ...])</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.random_shortest_path" title="network_exploration_stuff.random_shortest_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">random_shortest_path</span></code></a>([G, res_points, ...])</p></td>
 <td><p>Shortest path between a random residential parcel and all of a given resource.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.read_graph_from_disk" title="network_exploration_stuff.read_graph_from_disk"><code class="xref py py-obj docutils literal notranslate"><span class="pre">read_graph_from_disk</span></code></a>([path, name])</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.read_graph_from_disk" title="network_exploration_stuff.read_graph_from_disk"><code class="xref py py-obj docutils literal notranslate"><span class="pre">read_graph_from_disk</span></code></a>([path, name])</p></td>
 <td><p>Open a saved graphxml file.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.rename" title="network_exploration_stuff.rename"><code class="xref py py-obj docutils literal notranslate"><span class="pre">rename</span></code></a>([G])</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.rename" title="network_exploration_stuff.rename"><code class="xref py py-obj docutils literal notranslate"><span class="pre">rename</span></code></a>([G])</p></td>
 <td><p>Rename nodes from 1 to N, the total number of nodes.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.save_2_disk" title="network_exploration_stuff.save_2_disk"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_2_disk</span></code></a>([G, path, name])</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.save_2_disk" title="network_exploration_stuff.save_2_disk"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_2_disk</span></code></a>([G, path, name])</p></td>
 <td><p>Save network as graphxml file.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.shape_2_graph" title="network_exploration_stuff.shape_2_graph"><code class="xref py py-obj docutils literal notranslate"><span class="pre">shape_2_graph</span></code></a>([source])</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.shape_2_graph" title="network_exploration_stuff.shape_2_graph"><code class="xref py py-obj docutils literal notranslate"><span class="pre">shape_2_graph</span></code></a>(source)</p></td>
 <td><p>Extracts road network from shapefile.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">shortestPath</span></code>(origin, capacity_array, ...)</p></td>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">shortestPath</span></code>(origin, capacity_array, ...)</p></td>
 <td><p>This method finds the shortest path from origin to all other nodes in the network.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">shortestPath_heap</span></code>(origin, capacity_array, ...)</p></td>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">shortestPath_heap</span></code>(origin, capacity_array, ...)</p></td>
 <td><p>This method finds the shortest path from origin to all other nodesin the network.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.summary_function" title="network_exploration_stuff.summary_function"><code class="xref py py-obj docutils literal notranslate"><span class="pre">summary_function</span></code></a>([G])</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.summary_function" title="network_exploration_stuff.summary_function"><code class="xref py py-obj docutils literal notranslate"><span class="pre">summary_function</span></code></a>([G])</p></td>
 <td><p>Return quick summary information regarding a network.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.traffic_assignment" title="network_exploration_stuff.traffic_assignment"><code class="xref py py-obj docutils literal notranslate"><span class="pre">traffic_assignment</span></code></a>(G, res_points, dest_points)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="../usage.html#network_exploration_stuff.traffic_assignment" title="network_exploration_stuff.traffic_assignment"><code class="xref py py-obj docutils literal notranslate"><span class="pre">traffic_assignment</span></code></a>(G, res_points, dest_points)</p></td>
 <td><p>Solves the static traffic assignment problem based using algorithms and termination criteria from user inputs.</p></td>
 </tr>
 </tbody>

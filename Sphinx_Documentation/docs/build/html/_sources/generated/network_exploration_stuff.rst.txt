@@ -20,6 +20,7 @@
       min_cost_flow_parcels
       mod_search
       nearest_nodes
+      nearest_nodes_vertices
       parallel_edges
       pathTo
       pathTo_mod

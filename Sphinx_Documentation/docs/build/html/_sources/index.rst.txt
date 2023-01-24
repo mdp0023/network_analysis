@@ -12,7 +12,7 @@ This is the python library that contains functions for my ongoing network resear
 
 Check out the :doc:`usage` section for further information on the available functions. 
 
-Check out the :doc:`Walkthrough and Quickstart` to learn the basic functionality of the package.
+Check out the :doc:`Walkthrough and Quickstart` section to learn the basic functionality of the package.
 
 
 .. note::

@@ -10,52 +10,54 @@ import network_exploration_stuff as mynet
 # VARIABLES USED #############################################################
 # file path
 path = "/home/mdp0023/Documents/Codes_Projects/\
-network_analysis/Network_Testing_Data"
+network_analysis/Network_Testing_Data/AOI_Testing"
 image_path = "/home/mdp0023/Documents/Codes_Projects/\
 network_analysis/Poster_Graphics"
 inset_path = "/home/mdp0023/Documents/Codes_Projects/network_analysis/bboxes"
 # AOI without buffer
-aoi_area = f'{path}/Neighborhood_Network_AOI.shp'
+aoi_area = '/home/mdp0023/Desktop/external/Data/Network_Data/AOI_Testing/AOI_Boundary/Neighborhood_Network_AOI.shp'
 # AOI with buffer
 aoi_buffer = f'{path}/Neighborhood_Network_AOI_Buf_1km.shp'
 # centroids of res parcels and food marts
 res_points_loc = f'{path}/Residential_Parcels_Points_Network_AOI.shp'
 food_points_loc = f'{path}/Food_Marts_Points_Network_AOI.shp'
 # shapefiles of res parcels and food marts
-res_parcels = f'{path}/Residential_Parcels_Network_AOI.shp'
-food_parcels = f'{path}/Food_Marts_Network_AOI.shp'
+res_parcels = '/home/mdp0023/Desktop/external/Data/Network_Data/AOI_Testing/AOI_Residental_Parcel_Shapefiles/Residential_Parcels_Network_AOI.shp'
+food_parcels = '/home/mdp0023/Desktop/external/Data/Network_Data/AOI_Testing/AOI_Food_Mart_Shapefiles/Food_Marts_Network_AOI.shp'
 # path for inundation
-inundation = f'{path}/Network_Inun.tif'
+inundation = f'/home/mdp0023/Desktop/external/Data/Network_Data/AOI_Testing/AOI_Inundation.tif'
 raster = rio.open(inundation)
 
 # LOADING WORK ###############################################################
 # G = shape_2_graph(source=aoi_buffer)
 # save_2_disk(G=G, path=path)
-G = mynet.read_graph_from_disk(path=path, name='AOI_Graph')
-G = mynet.rename(G=G)
-inundated_G = mynet.read_graph_from_disk(path=path, name='AOI_Graph_Inundated')
-inundated_G = mynet.rename(G=inundated_G)
+# G = mynet.read_graph_from_disk(
+#     path='/home/mdp0023/Documents/Codes_Projects/Network_Analysis/Network_Testing_Data/AOI_Testing/AOI_Graphs', name='AOI_Graph')
+# G = mynet.rename(G=G)
+# inundated_G = mynet.read_graph_from_disk(
+#     path='/home/mdp0023/Documents/Codes_Projects/Network_Analysis/Network_Testing_Data/AOI_Testing/AOI_Graphs', name='AOI_Graph_Inundated')
+# inundated_G = mynet.rename(G=inundated_G)
 
 # parallel_edges(G=G)
 
 # LOAD OTHER DATA ############################################################
 # shapefile centroids of residental plots
-res_points = gpd.read_file(res_points_loc)
+#res_points = gpd.read_file(res_points_loc)
 # shapefile of res parcels
 res_locs = gpd.read_file(res_parcels)
 # shapefile centroids of 3 foodmart plots
-food_points = gpd.read_file(food_points_loc)
+#food_points = gpd.read_file(food_points_loc)
 # shapefile of food mart parcels
 food_locs = gpd.read_file(food_parcels)
 # shapefile of area of interest
 aoi_area = gpd.read_file(aoi_area)
 
 # ensure proper projection
-G = ox.projection.project_graph(G, to_crs=32614)
+# G = ox.projection.project_graph(G, to_crs=32614)
 res_locs = res_locs.to_crs(epsg=32614)
 food_locs = food_locs.to_crs(epsg=32614)
-res_points = res_points.to_crs(epsg=32614)
-food_points = food_points.to_crs(epsg=32614)
+# res_points = res_points.to_crs(epsg=32614)
+# food_points = food_points.to_crs(epsg=32614)
 aoi_area = aoi_area.to_crs(epsg=32614)
 
 # #RANDOM SHORTEST PATH #######################################################
@@ -66,9 +68,9 @@ aoi_area = aoi_area.to_crs(epsg=32614)
 
 
 # MIN COST FLOW OF PARCELS ####################################################
-flow_dict, flow_cost = mynet.min_cost_flow_parcels(G=G,
-                                             res_points=res_points,
-                                             dest_points=food_points)
+# flow_dict, flow_cost = mynet.min_cost_flow_parcels(G=G,
+#                                              res_points=res_points,
+#                                              dest_points=food_points)
 
 
 # MAX FLOW OF PARCELS ########################################################
@@ -98,29 +100,29 @@ flow_dict, flow_cost = mynet.min_cost_flow_parcels(G=G,
 #                                path=path,
 #                                inundation=inundation)
 
-inundated_G = mynet.read_graph_from_disk(path=path, name='AOI_Graph_Inundated')
-inundated_G = ox.projection.project_graph(inundated_G, to_crs=32614)
+# inundated_G = mynet.read_graph_from_disk(path=path, name='AOI_Graph_Inundated')
+# inundated_G = ox.projection.project_graph(inundated_G, to_crs=32614)
 
 #INCREASE IN COST FROM INUNDATION ###########################################
 # cost and flow in dry network
-dry_flow_dic, dry_cost_of_flow, dry_max_flow, dry_access = mynet.max_flow_parcels(
-    G=G,
-    res_points=res_points,
-    dest_points=food_points,
-    G_capacity='capacity',
-    G_weight='travel_time')
-print(f"Dry cost of flow: {dry_cost_of_flow}")
-print(f"Dry maximum flow: {dry_max_flow}")
+# dry_flow_dic, dry_cost_of_flow, dry_max_flow, dry_access = mynet.max_flow_parcels(
+#     G=G,
+#     res_points=res_points,
+#     dest_points=food_points,
+#     G_capacity='capacity',
+#     G_weight='travel_time')
+# print(f"Dry cost of flow: {dry_cost_of_flow}")
+# print(f"Dry maximum flow: {dry_max_flow}")
 
-# inundated flow
-wet_flow_dic, wet_cost_of_flow, wet_max_flow, wet_access = mynet.max_flow_parcels(
-    G=inundated_G,
-    res_points=res_points,
-    dest_points=food_points,
-    G_capacity='inundation_capacity',
-    G_weight='inundation_travel_time')
-print(f"Wet cost of flow: {wet_cost_of_flow}")
-print(f"Wet maximum flow: {wet_max_flow}")
+# # inundated flow
+# wet_flow_dic, wet_cost_of_flow, wet_max_flow, wet_access = mynet.max_flow_parcels(
+#     G=inundated_G,
+#     res_points=res_points,
+#     dest_points=food_points,
+#     G_capacity='inundation_capacity',
+#     G_weight='inundation_travel_time')
+# print(f"Wet cost of flow: {wet_cost_of_flow}")
+# print(f"Wet maximum flow: {wet_max_flow}")
 
 ##
 
@@ -180,28 +182,29 @@ print(f"Wet maximum flow: {wet_max_flow}")
 # ##############################################################################
 # CREATE SOME MAPS TO VISUALIZE IMPACT OF INUNDATION ####################
 # first need to open clean copies of graphs that do not have artifical nodes
-G_map = mynet.read_graph_from_disk(path=path, name='AOI_Graph')
+G_map = mynet.read_graph_from_disk(
+    path='/home/mdp0023/Desktop/external/Data/Network_Data/AOI_Testing/AOI_Graphs', name='AOI_Graph')
 G_map = ox.projection.project_graph(G_map, to_crs=32614)
 G_map = mynet.rename(G=G_map)
-inundated_G_map = mynet.read_graph_from_disk(path=path, name='AOI_Graph_Inundated')
+#inundated_G_map = mynet.read_graph_from_disk(path=path, name='AOI_Graph_Inundated')
 
 # relate flow dictionary back to INUNDATED graph for plotting purposes
-inundated_G_map = nx.DiGraph(inundated_G_map)
-# relate
-for edge in inundated_G_map.edges:
-    values = {(edge[0], edge[1]): {'inundation_flow':
-                                   wet_flow_dic[edge[0]][edge[1]]}}
-    nx.set_edge_attributes(G=inundated_G_map, values=values)
-inundated_G_map = nx.MultiDiGraph(inundated_G_map)
+# inundated_G_map = nx.DiGraph(inundated_G_map)
+# # relate
+# for edge in inundated_G_map.edges:
+#     values = {(edge[0], edge[1]): {'inundation_flow':
+#                                    wet_flow_dic[edge[0]][edge[1]]}}
+#     nx.set_edge_attributes(G=inundated_G_map, values=values)
+# inundated_G_map = nx.MultiDiGraph(inundated_G_map)
 
-#relate flow dictionary back to DRY graph for plotting purposes
-G_map = nx.DiGraph(G_map)
-# relate
-for edge in G_map.edges:
-    values = {(edge[0], edge[1]): {'dry_flow':
-                                   dry_flow_dic[edge[0]][edge[1]]}}
-    nx.set_edge_attributes(G=G_map, values=values)
-G_map = nx.MultiDiGraph(G_map)
+# #relate flow dictionary back to DRY graph for plotting purposes
+# G_map = nx.DiGraph(G_map)
+# # relate
+# for edge in G_map.edges:
+#     values = {(edge[0], edge[1]): {'dry_flow':
+#                                    dry_flow_dic[edge[0]][edge[1]]}}
+#     nx.set_edge_attributes(G=G_map, values=values)
+# G_map = nx.MultiDiGraph(G_map)
 
 
 # create some inundated plots
@@ -219,24 +222,23 @@ G_map = nx.MultiDiGraph(G_map)
 #                       save_loc=f"{image_path}/inundated_flow.pdf")
 
 # non-inundated flow plot for paper
-plot = mynet.plot_aoi(G=G_map,
-                      res_parcels=res_locs,
-                      resource_parcels=food_locs,
-                      edge_width='dry_flow',
-                      bbox=aoi_area,
-                      scalebar=True,
-                      save_loc=f"{image_path}/non_inundated_flow.pdf")
-plt.show()
-# # inundation map
 # plot = mynet.plot_aoi(G=G_map,
 #                       res_parcels=res_locs,
 #                       resource_parcels=food_locs,
+#                       edge_width='dry_flow',
 #                       bbox=aoi_area,
-#                       inundation=raster,
-#                       insets=[f"{inset_path}/bbox1.shp"],
 #                       scalebar=True,
-#                       save_loc=f"{image_path}/inundation.pdf")
+#                       save_loc=f"{image_path}/non_inundated_flow.pdf")
 
+# # inundation map
+plot = mynet.plot_aoi(G=G_map,
+                      res_parcels=res_locs,
+                      resource_parcels=food_locs,
+                      bbox=aoi_area,
+                      inundation=raster,
+                      scalebar=True,
+                      save_loc="/home/mdp0023/Documents/Codes_Projects/Network_Analysis/Poster_Graphics/inundation_noinset.pdf")
+plt.show()
 # # inset maps
 # # inset 1
 # # plot = plot_aoi(G=G_map,
