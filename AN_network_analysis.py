@@ -31,6 +31,8 @@ res_parcels = gpd.read_file(res_parcel_loc)
 res_points = gpd.read_file(res_points_loc)
 food_parcels = gpd.read_file(food_parcel_loc)
 food_points = gpd.read_file(food_points_loc)
+
+aoi_shape = gpd.read_file(aoi_area)
 # Inundation raster
 inundation_raster = f'{folder_path}/AN_Inundation/AN_Memorial_Day_Compound.tif'
 raster = rio.open(inundation_raster)
@@ -46,12 +48,15 @@ raster = rio.open(inundation_raster)
 # open saved graph
 G = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph')
 G_inun = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_Inundated')
+# G_TA_flood = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_Traffic_Assignment_AGR_Inundation')
+G_TA_no_flood = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_Traffic_Assignment_No_Inundation')
 
+# Inundate network
 # G_inun = mynet.inundate_network(G=G, 
 #                                 path=f'{folder_path}/AN_Graphs', 
 #                                 inundation=f'{folder_path}/AN_Inundation/AN_Memorial_Day_Compound.tif')
 
-# # available edge and node attributes
+# available edge and node attributes
 # edge_attributes = list(list(G.edges(data=True))[0][-1].keys())
 # node_attributes = list(list(G.nodes(data=True))[0][-1].keys())
 # print(edge_attributes)
@@ -69,7 +74,7 @@ G_inun = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Gr
 
 # # get unique capacity values (check for errors)
 # unique_caps = np.unique(list(nx.get_edge_attributes(G, 'capacity').values()))
-# percent_edge_w_cap = len(list(nx.get_edge_attributes(G, 'capacity').values()))/G.number_of_edges()
+# percent_edge_w_cap = len(list(nx.get_edge_attributes(G_inun, 'capacity').values()))/G.number_of_edges()
 # print(unique_caps)
 
 # # get unique number of lanes (check for errors)
@@ -98,35 +103,35 @@ G_inun = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Gr
 #                                 dest_parcels=food_parcels, 
 #                                 ignore_capacity=False)
 
-output = mynet.max_flow_parcels(G=G_inun,
-                                res_points=res_points,
-                                dest_points=food_points,
-                                G_capacity='inundation_capacity_agr',
-                                G_weight='inundation_travel_time_agr',
-                                G_demand='demand',
-                                dest_method='multiple',
-                                dest_parcels=food_parcels,
-                                ignore_capacity=False)
+# output = mynet.max_flow_parcels(G=G_inun,
+#                                 res_points=res_points,
+#                                 dest_points=food_points,
+#                                 G_capacity='inundation_capacity_agr',
+#                                 G_weight='inundation_travel_time_agr',
+#                                 G_demand='demand',
+#                                 dest_method='multiple',
+#                                 dest_parcels=food_parcels,
+#                                 ignore_capacity=False)
 
-flow_dictionary = output[0]
-cost_of_flow = output[1]
-max_flow = output[2]
-access = output[3]
+# flow_dictionary = output[0]
+# cost_of_flow = output[1]
+# max_flow = output[2]
+# access = output[3]
 
-print(f'level of access: {access}')
-# print(f'cost of flow: {cost_of_flow}') 
-print(f'Maximum amount of flow: {max_flow}')
+# print(f'level of access: {access}')
+# # print(f'cost of flow: {cost_of_flow}') 
+# print(f'Maximum amount of flow: {max_flow}')
 
-#relate flow dictionary back to DRY graph for plotting purposes
-G_map = nx.DiGraph(G)
-# relate
-for edge in G_map.edges:
-    values = {(edge[0], edge[1]): {'wet_flow':
-                                   flow_dictionary[edge[0]][edge[1]]}}
-    nx.set_edge_attributes(G=G_map, values=values)
+# #relate flow dictionary back to DRY graph for plotting purposes
+# G_map = nx.DiGraph(G)
+# # relate
+# for edge in G_map.edges:
+#     values = {(edge[0], edge[1]): {'wet_flow':
+#                                    flow_dictionary[edge[0]][edge[1]]}}
+#     nx.set_edge_attributes(G=G_map, values=values)
 
-# need to convert back to multidigraph to plot properly
-G_map = nx.MultiDiGraph(G_map)
+# # need to convert back to multidigraph to plot properly
+# G_map = nx.MultiDiGraph(G_map)
 
 
 
@@ -142,21 +147,21 @@ G_map = nx.MultiDiGraph(G_map)
 #                                         G_weight='inundation_travel_time_agr',
 #                                         dest_method='multiple')
 
-output = mynet.flow_decomposition(G=G, 
-                                        res_points=res_points,
-                                        dest_points=food_points, 
-                                        res_parcels=res_parcels, 
-                                        dest_parcels=food_parcels, 
-                                        G_demand='demand', 
-                                        G_capacity='capacity', 
-                                        G_weight='travel_time',
-                                        dest_method='multiple')
+# output = mynet.flow_decomposition(G=G, 
+#                                         res_points=res_points,
+#                                         dest_points=food_points, 
+#                                         res_parcels=res_parcels, 
+#                                         dest_parcels=food_parcels, 
+#                                         G_demand='demand', 
+#                                         G_capacity='capacity', 
+#                                         G_weight='travel_time',
+#                                         dest_method='multiple')
 
   
-decomposed_paths=output[0]
-sink_insights=output[1]
-res_parcels=output[2]
-dest_parcels=output[3]
+# decomposed_paths=output[0]
+# sink_insights=output[1]
+# res_parcels=output[2]
+# dest_parcels=output[3]
 
 # res_parcels.plot(column='cost_of_flow', legend=True)
 
@@ -167,6 +172,7 @@ dest_parcels=output[3]
 
 
 ##########################################################################
+# PLOTTING
 
 # mynet.plot_aoi(G=G_map, 
 #                 res_parcels=res_parcels,
@@ -175,5 +181,83 @@ dest_parcels=output[3]
 #                 decomp_flow=True,
 #                 loss_access_parcels=res_parcels.loc[res_parcels['cost_of_flow'].isna()])
 # plt.show()
+
+
+
+##########################################################################
+# MIN_COST_FLOW_PARCELS TEST
+# flow_dictionary, cost_of_flow = mynet.min_cost_flow_parcels(G=G, 
+#                                                                 res_points=res_points, 
+#                                                                 dest_points=food_points, 
+#                                                                 dest_parcels=food_parcels, 
+#                                                                 G_demand='demand', 
+#                                                                 G_capacity='capacity', 
+#                                                                 G_weight='travel_time', 
+#                                                                 dest_method='multiple')
+# print(cost_of_flow)
+
+##########################################################################
+#TRAFFIC ASSIGNMENT AND CORRESPONDING SPTT
+# G_output, AEC_list, TSTT_list, SPTT_list, RG_list, iter = mynet.traffic_assignment(G=G_inun,
+#                                                                                     res_points=res_points, 
+#                                                                                     dest_points=food_points,
+#                                                                                     dest_parcels=food_parcels,  
+#                                                                                     G_capacity='capacity',
+#                                                                                     G_weight='travel_time',
+#                                                                                     algorithm='link_based', 
+#                                                                                     method='MSA',
+#                                                                                     link_performance='BPR',
+#                                                                                     termination_criteria=['iter',50],
+#                                                                                     dest_method='multiple')
+
+
+# print(f'AEC_list: {AEC_list}')
+# print(f'TSTT_list: {TSTT_list}')
+# print(f'SPTT_list: {SPTT_list}')
+# print(f'RG_list: {RG_list}')
+# print(f'iter: {iter}')
+
+
+# output = mynet.flow_decomposition(G=G_TA_no_flood,
+#                                     res_points=res_points,
+#                                     dest_points=food_points,
+#                                     res_parcels=res_parcels,
+#                                     dest_parcels=food_parcels,
+#                                     G_demand='demand',
+#                                     G_capacity='capacity',
+#                                     G_weight='Weight_Array_Iter',
+#                                     dest_method='multiple')
+
+# decomposed_paths=output[0]
+# sink_insights=output[1]
+# res_parcels=output[2]
+# dest_parcels=output[3]
+
+
+# mynet.plot_aoi(G=G_TA_no_flood,
+#                 background_edges=G,
+#                 bbox=aoi_shape,
+#                 res_parcels=res_parcels,
+#                 resource_parcels=food_parcels,
+#                 edge_width='TA_Flow',
+#                 decomp_flow=True,
+#                 # loss_access_parcels=res_parcels.loc[res_parcels['cost_of_flow'].isna()],
+#                 scalebar=True)
+
+
+# plt.show()
+
+##############################################################################
+# # PLOT INUNDATED NETWORK BY DEPTH ON ROADWAY
+
+mynet.plot_aoi(G=G_inun, 
+                res_parcels=res_parcels,
+                bbox=aoi_shape,
+                resource_parcels=food_parcels,
+                edge_color='max_inundation_mm', 
+                scalebar=True)
+
+plt.show()
+
 
 
