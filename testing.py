@@ -21,8 +21,8 @@ logging.captureWarnings(True)
 # don't truncate output of numpy array
 np.set_printoptions(threshold=sys.maxsize)
 
-# for testing purposes, don't use the cache
-#ox.config(use_cache=False)
+# for testing purposes, should set use_cahce=False
+ox.config(use_cache=True)
 
 # AOI VARIABLES
 # Folder paths
