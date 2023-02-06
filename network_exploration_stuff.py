@@ -4,123 +4,156 @@
 # https://networkx.org/documentation/stable/tutorial.html
 # https://geoffboeing.com/2016/11/osmnx-python-street-networks/
 
-import networkx as nx
-import osmnx as ox
-import matplotlib.pyplot as plt
-import geopandas as gpd
-import pandas as pd
+# Packages actively using
+import copy
+import math
+import heapq
+import rasterio
 import numpy as np
+import osmnx as ox
+import pandas as pd
+import rasterio.mask
+import networkx as nx
+import geopandas as gpd
+import matplotlib as mpl
 from scipy.stats import iqr
 from rasterio.plot import show
+import matplotlib.pyplot as plt
+from collections import Counter
+from rasterstats import zonal_stats
+from collections import defaultdict
+from multiprocessing import Pool as Poolm
+from matplotlib.colors import ListedColormap
+from matplotlib_scalebar.scalebar import ScaleBar
+from multiprocessing.pool import ThreadPool as Pool
+
+# packages I may be able to remove
+import time
+import fiona
+import random
+import shapely
+from scipy import sparse
 import matplotlib.pylab as pl
 from matplotlib import pyplot
 import matplotlib.colors as colors
-from matplotlib.colors import ListedColormap
-from rasterstats import zonal_stats
-from matplotlib_scalebar.scalebar import ScaleBar
-import random
-import copy
-import heapq
-from collections import defaultdict
-import rasterio
-import rasterio.mask
-import fiona
-import shapely
-import time
-from multiprocessing.pool import ThreadPool as Pool
-from multiprocessing import Pool as Poolm
 from multiprocessing import Process
-import math
-import sys
-import matplotlib as mpl
 
-
-from scipy import sparse
-
-# set some panda display options
+# set some temporary panda display options
 pd.set_option('display.max_columns', None)
 
-# CAPACITY TODOS
-# TODO: Change disruption impact on capacity - remove nodes that cannot support travel
-# TODO: Potentially - add capacity limitation to min cost flow calculations (i.e., ideal travel functions )
 
+############# NOTES SECTION: contains organized table of todos and bugs that I am actively and planning on working on
+    # Bugs should be seen as major issues that need to be addressed ASAP, TODOS are smaller improvements to improve functionality
+
+# BUGS
+# BUG1: In traffic assignment function, convert numpy arrays to sparse arrays to save memory and actually be able to calculate 
+
+
+# MAJOR TODOS: I think the most important items that need to be addressed ASAP
+# TODO13: Multiple resource assignment versus individual resources at once
+# TODO15: Convert entire code base into OOP - convert all the individual functions to a class
+
+# CAPACITY TODOS
+# TODO1: Change disruption impact on capacity: fully disrupted nodes/edges need to just be completly removed (i.e., BPR can't divide by zero)
+# TODO2: Add resource capacity. e.g., a grocery store can only support so many people. 
+    # can make this a hard capacity (no one else gets served)
+    # or a soft capacity, where an additional cost is incured, which grows exponentially with each new person
 
 # SPEED DISRUPTION TODOS
-# TODO: input new equations for speed disruption, possibly add bining feature
-
+# 
 
 # POTENTIAL LIMITATION TODOS
-# TODO: Some of the closest origin nodes are the destination nodes - for now assuming that no paths need to be calculated (i.e., can just walk)
+# TODO3: Some of the closest origin nodes are the destination nodes - for now assuming that no paths need to be calculated (i.e., can just walk)
+    # Could probably set a buffer, e.g., origins with XX meters are within walking distance and can be ignored from travelling network
+        # this will be related to resource capacity, see #TODO2
 
 
 # IMPROVEMENT TODOS
-# TODO: move digraph conversion into better spot and determine when it is needed
-# TODO: Move CRS check into functions
-# TODO: Min cost flow and max cost flow functions have some repeat code - I could condense a lot of the work
-# TODO: Use kwargs methodology to create new edges with appropriate attributes
-#   see # TODO: KWARGS below in code for example
-# TODO: read_graph_from_disk - problem with preserving dtypes so I hardcoded a
-#   temporary fix - right now it goes through the attributes and determines if
-#    it could be converted to a float - if it can it does
-#   this involves manually skipping oneway as well (i think b/c its bool)
-#   this was needed b/c  inundation_G load not preserve datatypes
-# TODO: update shortest path and path to functions to the new modified ones - much quicker
-# TODO: add impact of rainfall intensity on reduction of speed and intensity
+# TODO4: move digraph conversion into better spot and determine when it is needed
+    # should be within each function NOT in the save or load function, because we should keep the original multidigraph saved
+# TODO5: Move CRS check into functions
+# TODO6: Min cost flow and max cost flow functions have some repeat code - I could condense a lot of the work
+# TODO7: Use kwargs methodology to create new edges with appropriate attributes
+#   see # TODO7: KWARGS below in code for example
+# TODO8: read_graph_from_disk - problem with preserving dtypes so I hardcoded a
+    # temporary fix - right now it goes through the attributes and determines if it could be converted to a float - if it can it does. 
+    # this involves manually skipping oneway as well (i think b/c its bool)
+    # this was needed b/c  inundation_G load not preserve datatypes
+    # I think this can just stay how it is and isn't really an improvement that needs to be made
+# TODO9: update shortest path and path to functions to the new modified ones - much quicker
+# TODO10: add impact of rainfall intensity on reduction of speed and intensity
     # light rain reduces free flow speed 2-13% and capacity 4-11%
     # heavy rain reduces speed 3-16% and capacity 10-30%
     # see these sites for info: 
     # https://engrxiv.org/preprint/view/1322/2765
     # https://ops.fhwa.dot.gov/weather/best_practices/AMS2003_TrafficFlow.pdf 
     # https://ops.fhwa.dot.gov/weather/q1_roadimpact.htm#:~:text=Light%20rain%20can%20decrease%20freeway,12%20percent%20in%20low%20visibility.
+# TODO11: modallity component: i.e., factoring in public transportation and access to vehicle - stochastic component?
+# TODO12: add a node snapping filter to correct when parcels are snapped to the wrong nearest intersection
+    # a few different options exist:
+        # choose to ignore roads that are a certain classification (i.e., freeway)
+        # see if parcel has information that aligns with OSM data (i.e., match street names)
+        # examine neighbors nearest nodes (i.e., nearest parcels within radius, where do they snap? if pattern exists change snapping for incorrect one)
+# TODO14: Identify and double check bridges that are/are not flooding
+# TODO15: In some functions, we add a demand attribute to the network. The network isn't an output so demand is not saved. May need to consider changing this
+# TODO16: In many calculations, artifical node is set as node 99999999 - may want to reconsider this to avoid the small chance of duplicating a node
+# TODO17: Could explore option of graphing artifical nodes/edges
+        # x = node.geometry.x
+        # y = node.geometry.y
+# TODO18: Add option to change color of specific nodes in plot_aoi
+    # example: G_gdf_nodes.loc[[6016], 'geometry'].plot(ax=ax, color='green')
 
-# OTHER TODOS
-# TODO: Need to use different method to determine random node variable name in the min cost flow function
-# TODO: In plot aoi - allow it to accept a list of dest parcels
-#   i.e., food and gas locations# TODO: convert parcel identificaiton (access vs. no access) to function
 
-
-
-
-# Functions to examine:
+# RESOURCES TO EXAMINE
     #https://osmnx.readthedocs.io/en/stable/osmnx.html?highlight=interpolate#osmnx.utils_geo.interpolate_points 
     #https://stackoverflow.com/questions/64104884/osmnx-project-point-to-street-segments 
     #https://github.com/gboeing/osmnx/issues/269 
 
-# Possible explorations?
-# Survey informed model - using survey/census data to determine mvmnt patterns?
-#   Maybe stochastic methods of movements
-#   e.g., 50% of the people in this area only ride public transportation
 
-# Assumptions that need to be documented
-# resources ae connected only 1 of the nearest intersections
-#   realistically, there are multiple intersections for many resources
+# ASSUMPTIONS THAT NEED TO BE DOCUMENTED: Tried to capture all assumptions, regardless of how small, for transparency
+# 1. Origin node snapping - access to transportation network means nearest intersection isn't flooded
+# 2. Destination node snapping - if you can access the nearest corner of a destination, you can access that resource
+# 3. OpenStreetMap edges with multiples type attributes (e.g., ['residential','unclassified']) are set to the first in the list
+# 4. OpenStreetMap edges with multiple lanes listed (e.g., ['3', '4', '2']) are set to the smallest number in the list
+# 5. All of the predetermined road attributes (e.g., number of lanes, speeds, width of lane, capacities, etc.)
+# 6. When multidigraph is converted to digraph, if parallel edges exist, only one set of attributes remains the same. Little to no impact on results so far.
 
-# Snapping parcels to any intersections may snap to the wrong ones
-#   if a place is close to freeway interchange, might snap there instead of
-#   actual road it neighbors
-#   Possible solution: when snapping to roads, ignore roads above a specific
-#   classification (e.g., freeways)
+
 
 
 # THE FUNCTIONS #############################################################
 
-
-def shape_2_graph(source):
+def crs_check(source: str, shapefiles: list[str]=[], crs: int=None):
     '''
-    Extracts road network from shapefile.
+    Resave shapefiles with a matching coordinate reference system
 
-    This function takes an input path to a .shp file (assuming the associated .shp, .shx, .dbf, etc. are all in the same folder)
-    and extracts/returns the OpenStreetMap road network. This function automatically pulls the speed and travel time information,
-    which are necessary components in further calculations. 
+    This function rewrites a list of of shapefiles to have the same coordinate reference system as the shapefile given in the source argument. Alternatively, if a *crs*, is passed, the source and the list of shapefiles will all be written with the given coordinate reference system. To pass a crs, use the EPSG integer convention. For example, 'crs=4326' is WGS84 coordinate reference system. For some OSMNx operations to function properly, WGS84 is required, and this is taken care of in the functions themselves.
 
-    **Important Notes**
+    :param source: Path to .shp file of 
+    :type source: str
+    :param source: Paths to .shp files that need their coordinate reference system checked
+    :type source: list of strings
+    :param source: if not None, rewrite all inputs with given crs
+    :type source: int or None
     
-    Ensure that the shapefile area has a sufficent buffer to capture enough of the road network.
-    For example, if the AOI is a block group, residents might require driving outside bounadry to get to areas within
-    and excluding roadnetworks, espcially those that border the AOI, can lead to errors.
+    '''
 
-    Only potential improvement is to include function to add a buffer to AOI instead of requiring that the user automatically do this, but this is not the most meaningful improvement
+    if crs is not None:
+        crs_proj = f"EPSG:{crs}"
+        gpd.read_file(source).to_crs(crs_proj).to_file(source)
+    else:
+        crs_proj = gpd.read_file(source).crs
+    for shapefile in shapefiles:
+        gpd.read_file(shapefile).to_crs(crs_proj).to_file(shapefile)
 
+
+def shape_2_graph(source: str):
+    '''
+    Extracts OSM road network from shapefile.
+
+    This function takes an input string path to a .shp file of the area of interest (assuming the associated .shp, .shx, .dbf, etc. are all in the same folder) and returns the OpenStreetMap road network for that area.  It is important to consider an area of interest with an appropriate buffer to capture a large enough portion of the road network. For example, if the area of interest is a Census block group, residents will likely require driving outside of that boundary to get to another area within the bounadry. This function automatically cleans and sets the lane capacities (passenger car units per hour), number of lanes, lane width (standard 3.7 meters), speed (kilometers per hour), and travel time (seconds) information, all necessary components in further calculations. It should be noted that output lane capacities have already been converted to passenger car units per hour per road segment, meaning that the number of lanes is accounted for in the capacity attribute. For road segments with missing attributes in OpenStreetMap, values are set to standard values from appropriate highway manuals based on road type. 
+    
+    It is recomended that the input shapefile have a projected coordinate reference system. Regardless, the coordiante reference system of the input shapefile will be preserved in the output road network. If this function is being run multiple times and the user needs a new and updated network, delete the cache or the same network will be used every time.
 
     :param source: Path to .shp file of the area of interest
     :type source: str
@@ -187,7 +220,6 @@ def shape_2_graph(source):
         elif v == 'residential' or v == 'minor' or v == 'living_street' or v == 'unclassified':
             G[k[0]][k[1]][k[2]]['capacity'] = 600
 
-
     # some roads gain/lose lanes during uninterupted segments, and therefore lanes are reported as a list (e.g., ['3', '4', '2'])
     # determine which edges have multiple number of lanes and replace with the smallest one available 
     edge_lane = nx.get_edge_attributes(G, 'lanes')
@@ -213,12 +245,9 @@ def shape_2_graph(source):
         # Tertiary:                                             1
         # Residential, minor, unclassified, living street:      1
         # all link roads (typically on ramps or slip lanes):    1
+    
     # AVERAGE LANE WIDTH IN METERS
     lane_width = 3.7
-    edge_lane = nx.get_edge_attributes(G, 'lanes')
-    edge_oneway = nx.get_edge_attributes(G, 'oneway')
-    edge_rtype = nx.get_edge_attributes(G, 'highway')
-
 
     for k,v in edge_rtype.items():
         # for oneway roads...
@@ -281,12 +310,11 @@ def shape_2_graph(source):
     return(G)
 
 
-def save_2_disk(G='', path='', name='AOI_Graph'):
+def save_2_disk(G: nx.Graph, path: str, name='AOI_Graph'):
     '''
     Save network as graphxml file.
 
-    Once saved, the graph can be reloaded in for future analysis. The User avoids having to redownload 
-    the same graph multiple times.
+    Maintaining an original copy of the road network used during an analysis is beneficial because edits to the network (e,g., deletion of inundated edges ir addition of artificial edges) can inadvertnely impact or prevent other analyses or plotting. Users can continue to reload and access the original network under consideration. Typically the input graph, G, will be the graph obtained from :func:`shape_2_graph`.
     
     :param G: Input graph to be saved
     :type G: networkx.Graph [Multi, MultiDi, Di]
@@ -299,7 +327,34 @@ def save_2_disk(G='', path='', name='AOI_Graph'):
     ox.io.save_graphml(G, f'{path}/{name}')
 
 
-def read_graph_from_disk(path='', name='AOI_Graph'):
+def rename(G: nx.Graph):
+    '''
+    Rename nodes from 1 to N, the total number of nodes.
+
+    Renaming nodes in this order makes it easier to access nodes/edges of interest. It is also necessary when comparing nodes/edges before/after :func:`traffic_assignment` which converts networks to/from arrays.
+
+    :param G: Graph network
+    :type G: networkx.Graph [Multi, MultiDi, Di]
+    :return: **G**, renamed graph network
+    :rtype: networkx.Graph [Multi, MultiDi, Di] 
+    '''
+
+    # Number of nodes
+    num_nodes = len(G)
+    # list from 1 to [num_nodes]
+    lst = list(range(1, num_nodes+1))
+    # Create a dictionary (value for each key is None) from sorted G nodes
+    mapping = dict.fromkeys(sorted(G))
+    # iterate through this dictionary (with enumerate to have count var.)
+    for idx, key in enumerate(mapping):
+        # set each key value (previously None) to new value
+        mapping[key] = lst[idx]
+    # nx.relabel_nodes relabels the nodes in G based on mapping dict
+    G = nx.relabel_nodes(G, mapping)
+    return (G)
+
+
+def read_graph_from_disk(path: str, name='AOI_Graph', rename_nodes=True):
     '''
     Open a saved graphxml file.
 
@@ -309,6 +364,8 @@ def read_graph_from_disk(path='', name='AOI_Graph'):
     :type path: str
     :param name: Name of the graphxml file. *Default='AOI_Graph'*
     :type name: str
+    :param rename_nodes: Whether or not nodes should be renamed from 1 to N, where N is the total number of nodes.
+    :type rename_nodes: bool. *Default=True*
     :return: **G**, the opened graph network.
     :rtype: networkx.Graph [Multi, MultiDi, Di]
     '''
@@ -330,85 +387,49 @@ def read_graph_from_disk(path='', name='AOI_Graph'):
 
     G = ox.io.load_graphml(
         f'{path}/{name}', edge_dtypes=list_floats)
+    
+    if rename_nodes is True:
+        # rename nodes from 1 to N, the total number of nodes
+        G = rename(G)
+    else:
+        pass
     return(G)
 
 
-def rename(G=''):
+def parallel_edges(G: nx.Graph):
     '''
-    Rename nodes from 1 to N, the total number of nodes.
+    Find parallel edges, and self loop edges, in a graph network.
 
-    This function is useful after extracting network using OSMnx, and makes referencing nodes/paths easier.
-    It serves no specific purpose but I think it is still useful.
-
-    :param G: Graph network
-    :type G: networkx.Graph [Multi, MultiDi, Di]
-    :return: **G**, renamed graph network
-    :rtype: networkx.Graph [Multi, MultiDi, Di] 
-    '''
-   
-    # Number of nodes
-    num_nodes = len(G)
-    # list from 1 to [num_nodes]
-    lst = list(range(1, num_nodes+1))
-    # Create a dictionary (value for each key is None) from sorted G nodes
-    mapping = dict.fromkeys(sorted(G))
-    # iterate through this dictionary (with enumerate to have count var.)
-    for idx, key in enumerate(mapping):
-        # set each key value (previously None) to new value
-        mapping[key] = lst[idx]
-    # nx.relabel_nodes relabels the nodes in G based on mapping dict
-    G = nx.relabel_nodes(G, mapping)
-    return(G)
-
-
-def parallel_edges(G=''):
-    '''
-    Find parallel edges in graph network.
-
-    A lot of network algorithms in NetworkX require that networks be DiGraphs, or directional graphs.
-    When extracting road networks with OSMnx, they are often returned as MultiDiGraphs, meaning they could potentially have 
-    parallel edges. This function determines if parallel edges exists, and converting between MultiDiGraphs to DiGraphs could
-    lead to some sort of error. 
+    A lot of network algorithms in NetworkX require that networks be DiGraphs, or directional graphs. When extracting road networks with OSMnx, they are often returned as MultiDiGraphs, meaning they could potentially have parallel edges (multiple edges with the same start and finish node) or self loop edges (an edge with the same start and end node). This function determines if these instances exists. There could potentially be an issue in end results depending on the attributes of of the parallel/loop edge and each should be examined in a study area if they exist. Typically, the do not have an impact.
 
     :param G: Graph network
     :type G: networkx.Graph [Multi, MultiDi, Di]
     :returns: 
-        - **Bool**, *True* if parallel edges exist, otherwise *False*
-        - **parallel_edges**, list of parallel edges, *[[u,v,num_edges],...]*
+        - **parallel_edges**, list of parallel edges, *[[u,v],...]*
+        - **self_loop_edges**, list of self loop edges, *[[u,u],...]*
     :rtype: tuple
 
     '''
    
-    # creat empty list of parallel edges
-    parallel_edges = []
-    # Number of nodes
-    num_nodes = len(G)
-    # list from 1 to [num_nodes]
-    lst = list(range(1, num_nodes+1))
-    # iterate through all possible combinations of (u,v)
-    for u in lst:
-        for v in lst:
-            # extract number of edges between nodes u and v
-            num_edges = G.number_of_edges(u=u, v=v)
-            # if the number of edges is greater than 2, we have parallel edges
-            if num_edges >= 2:
-                # append list, with the two nodes and number of edges
-                parallel_edge = [u, v, num_edges]
-                parallel_edges.append(parallel_edge)
-    if len(parallel_edges) >= 1:
-        return True, parallel_edges
-    if len(parallel_edges) < 1:
-        return False, [0]
+    parallel_edges=[]
+    self_loop_edges=[]
+    for u,v,k in G.edges(keys=True):
+        if k>0:
+            parallel_edges.append([u,v])
+        if u==v:
+            self_loop_edges.append([u, v])
+
+    return parallel_edges, self_loop_edges
 
 
-def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
+def nearest_nodes(G: nx.Graph, res_points: gpd.GeoDataFrame, dest_points: gpd.GeoDataFrame, G_demand='demand'):
     '''
-    Return Graph with demand attribute based on snapping sources/sinks to nearest nodes (intersections).
+    Returns graph with demand attribute based on snapping sources/sinks to each's nearest node (intersection).
     
-    The purpose of this function is take a series of input locations and determine the nearest nodes (intersections) within a Graph network. It takes this information to create source and sink information. 
+    The purpose of this function is take a series of input locations (residential points and destination points) and determine each's nearest node (i.e., roadway intersections) within a Graph network. It takes this information to append demand (i.e., source and sink) information. 
 
-    **Important Note**: The output graph has an attribute labeled G_demand, which shows the number of closest residential parcels to each unique intersection. Because these are considered sources, they have a negative demand. Sink locations, or the intersections that are closest to the the dest_points, will not have a demand value (G_demand == 0) because we do not know how much flow is going to that node until after a min-cost flow algorithm is run. I.e., to route properly, we end up creating an artifical sink and then decompose the flow to determine how much flow is going to each destination.
-
+    **Important Note**: The output graph has an attribute labeled based on the *G_demand argument*, which shows the number of closest residential parcels to each unique intersection. Because these are considered sources, they have a negative demand. Sink locations, or the intersections that are closest to the the dest_points, will not have a demand value (G_demand == 0) because we do not know how much flow is going to that node until after a minimum-cost flow algorithm is run. In the subsequent flow routing algorithms, we create an artificial sink and then decompose the flow to determine how much flow is going to each unique destination point. The graph that is returned is maintains the type of graph that was used as an input.
+ 
     :param G: Graph network
     :type G: networkx.Graph [Multi, MultiDi, Di]
     :param res_points: Point locations of all of the residential parcels
@@ -418,7 +439,7 @@ def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
     :param G_demand: name of attribuet in G refering to node demand, *Default='demand*
     :type G_demand: string
     :returns: 
-        - **G**, *networkx.DiGraph* with G_demand attribute showing source values (negative demand)
+        - **G**, *networkx.Graph [Multi, MultiDi, Di]* with G_demand attribute showing source values (negative demand)
         - **unique_origin_nodes**, *lst* of unique origin nodes
         - **unique_dest_nodes**, *lst* of unqiue destination nodes
         - **positive_demand**, *int* of the total positive demand across the network. **Does not include the residents that share a closest intersection with a resource parcel.**
@@ -448,9 +469,7 @@ def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
     # Create the demand attribute and set all equal to 0
     nx.set_node_attributes(G, values=0, name=G_demand)
 
-    # counting taking too long trying a new approach
-    from collections import Counter
-    #unique_origin_nodes_counts = dict(Counter(origins).items())
+    # Count the number of unique origin nodes
     unique_origin_nodes_counts = dict(zip(list(Counter(origins).keys()), [x*-1 for x in Counter(origins).values()]))
     
     # Create list of unique origins and destinations
@@ -472,15 +491,15 @@ def nearest_nodes(G='', res_points='', dest_points='', G_demand='demand'):
     return(G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points)
 
 
-def nearest_nodes_vertices(G='', res_points='', dest_parcels='', G_demand='demand', dest_points=None):
+def nearest_nodes_vertices(G: nx.Graph, res_points: gpd.GeoDataFrame, dest_parcels: gpd.GeoDataFrame, G_demand='demand', dest_points=None):
     '''
-    MODIFICATION OF NEAREST_NODES FUNCTION TO SNAP DEST PARCELS TO MULTIPLE NODES
+    Returns graph with demand attribute based on snapping sources/sinks to nearest nodes (intersections).
     
-    Return Graph with demand attribute based on snapping sources/sinks to nearest nodes (intersections).
+    This is a modification of the :func:`nearest_nodes` function, where instead of snapping destination parcels to their nearest singular intersection, it finds the nearest intersection to each corner of the parcel boundary. This more accuretly reflects multiple entrences to destinations/resources.
     
-    The purpose of this function is take a series of input locations and determine the nearest nodes (intersections) within a Graph network. It takes this information to create source and sink information. 
+    **Important Note**: The output graph has an attribute labeled based on the *G_demand argument*, which shows the number of closest residential parcels to each unique intersection. Because these are considered sources, they have a negative demand. Sink locations, or the intersections that are closest to the the dest_points, will not have a demand value (G_demand == 0) because we do not know how much flow is going to each location until after a minimum-cost flow algorithm is run. In the subsequent flow routing algorithms, we create an artificial sink and then decompose the flow to determine how much flow is going to each unique destination point. The graph that is returned is maintains the type of graph that was used as an input.
 
-    **Important Note**: The output graph has an attribute labeled G_demand, which shows the number of closest residential parcels to each unique intersection. Because these are considered sources, they have a negative demand. Sink locations, or the intersections that are closest to the the dest_points, will not have a demand value (G_demand == 0) because we do not know how much flow is going to that node until after a min-cost flow algorithm is run. I.e., to route properly, we end up creating an artifical sink and then decompose the flow to determine how much flow is going to each destination.
+    Optionally, destination points (i.e., resource centroids) can also be passed with the *dest_points* argument if the user is interested in having information regarding the nearest intersections being used for each destination point.
 
     :param G: Graph network
     :type G: networkx.Graph [Multi, MultiDi, Di]
@@ -500,7 +519,7 @@ def nearest_nodes_vertices(G='', res_points='', dest_parcels='', G_demand='deman
         - **Shared_nodes**, *lst* of nodes that res and destination parcels share same nearest 
         - **res_points**, *geopandas.GeoDataFrame*, residential points with appended attribute of 'nearest_node'
         - **dest_parcels**, *geopandas.GeoDataFrame*, destination/sink footprints with appended attribute of 'nearest_node'
-        - **dest_points**, *geopandas.GeoDataFrame*, destination/sink points with appended attribute of 'nearest_node'
+        - **dest_points**, *geopandas.GeoDataFrame*, *Optional,* destination/sink points with appended attribute of 'nearest_node'
     :rtype: tuple
 
     '''
@@ -517,7 +536,8 @@ def nearest_nodes_vertices(G='', res_points='', dest_parcels='', G_demand='deman
 
     # Will determine vertices of dest parcels and find multiple nearest nodes for destinations
     # simplify dest_parcels to reduce geometry
-    dest_simp = dest_parcels.simplify(3, preserve_topology=False)
+    # Preserve topology of the parcels
+    dest_simp = dest_parcels.simplify(3, preserve_topology=True)
     # account for multipolygons by creating convex hulls of each parcel
     convex_hull = dest_simp.convex_hull
     # convert back to geodataframe
@@ -580,21 +600,11 @@ def nearest_nodes_vertices(G='', res_points='', dest_parcels='', G_demand='deman
         return(G, unique_origin_nodes, unique_dest_nodes_list, positive_demand, shared_nodes, res_points, dest_parcels, dest_points)
 
 
-def random_shortest_path(G='', res_points='', dest_points='', plot=False):
+def random_shortest_path(G: nx.Graph, res_points: gpd.GeoDataFrame, dest_points: gpd.GeoDataFrame, plot=False):
     '''
     Shortest path between a random residential parcel and all of a given resource.
 
-    This function takes a set of residential points, chooses one at random, and then 
-    routes it to every destination point (i.e., some given resource). This function is capable of producing
-    a figure that also shows how that residential parcel would be routed to each of the destination points.
-    The OSMnx function used in this function is able to accept MultiDiGraphs, unlike some others used later on.
-    
-    **Important Notes** 
-    
-    This function finds the shortest path from the closest node (i.e., intersection) of a residential parcel and the 
-    closest node (i.e., intersection) for each destination. **It is worth considering changing this methodology**, adding nodes
-    and edges from the points themselves, but this requires further exploration.
-
+    This function takes a set of residential points, chooses one at random, and then routes it to every destination point (i.e., some given resource). This function is capable of producing a figure that also shows how that residential parcel would be routed to each of the destination points. 
 
     :param G: Graph network
     :type G: networkx.Graph [Multi, MultiDi, Di]
@@ -652,40 +662,32 @@ def random_shortest_path(G='', res_points='', dest_points='', plot=False):
         return routes
 
 
-def min_cost_flow_parcels(G='', res_points='', dest_points='', dest_parcels='', G_demand='demand', G_capacity='capacity', G_weight='travel_time', dest_method='single'):
+def min_cost_flow_parcels(G: nx.Graph, 
+                          res_points: gpd.GeoDataFrame, 
+                          dest_points: gpd.GeoDataFrame, 
+                          dest_parcels: gpd.GeoDataFrame=None, 
+                          G_demand='demand', 
+                          G_capacity='capacity', 
+                          G_weight='travel_time', 
+                          dest_method='single') -> tuple[dict, int]:
     '''
     Find the minimum cost flow of all residential parcels to a given resource.
 
-    Given a set of sources (residential parcels), the minimum cost flow of all sources to sinks (given resource type or destinations)
-    is determined. Sources send demand, and are therefore given a negative value. Sinks recieve demand, and are therefore given a positive 
-    value. This notation is derived from the NetworkX package.
+    Given a set of sources (residential parcels) and sinks (destination parcels) this function determines the minimum cost flow while accounting for edge capacities. Sources send demand and therefore have a negative demand value. Sinks recieve demand and therefore have a positive demand value. This notation comes from from the NetworkX package. All sinks are connected to an artificial sink in order to route sources to their nearest available destination.
 
-    Due to snapping methodology (*see important notes below*), source demand is the sum of the nearest parcels. If the nearest source and sink 
-    share the same node (i.e., a residential parcel and a grocery store share the same intersection), demand is set to zero. 
-    Justification for this is if you share the same nearest intersection then the resource is within walking distince.
+    Residential and resource parcels are snapped to the road network using :func:`nearest_nodes` and :func:`nearest_nodes_vertices`. If the *dest_method* argument is set to 'single', destination parcels are snapped to their nearest nodes. If the *dest_method* argument is set to 'multiple', than destination parcels are snapped to the nearest nodes for each vertex of the parcel boundary. 
 
-    Because we do not know how much flow goes to each resource destination, each destination point is connected to the same artifical sink,
-    which is given the total positive demand.
+    Similar to other functions, source demand is the sum of the nearest residential parcels that share that node as their nearest and if a residential parcel and shares a nearest node with a destination parcel this demand is ignored and they are assumed to be within walking distance.
 
-    If this function returns an error, than every residential parcel cannot reach the resource.
+    If this function returns an error, than every source is not able to reach the sink. We recommend using :func:`max_flow_parcels` in order to examine the network.
 
-    **Important Notes**
-    
-    Similar to :func:`random_shortest_path`, this function finds the shortest path from the closest node 
-    (i.e., intersection) of residential parcels and the closest node (i.e., intersection) for each destination. 
-    **It is worth considering changing this methodology**, adding nodes and edges from the points themselves, 
-    but this requires further exploration.
-
-    This function also does not factor in limits to a resource. In other words, there is no limit on the number of residential parcels
-    that can go to any single resource location. **This feature also needs further exploration.**
-
-    :param G: Graph network. Will be converted to DiGraph in function
+    :param G: Graph network
     :type G: networkx.Graph [Multi, MultiDi, Di]
     :param res_points: Point locations of all of the residential parcels
     :type res_points: geopandas.GeoDataFrame
-    :param dest_points: Point locations of all of the resources the random residential parcel is to be routed to
+    :param dest_points: Point locations of all of the resources the residential parcels will be routed to
     :type dest_points: geopandas.GeoDataFrame
-    :param dest_parcels: technically only required if dest_method == 'multiple', destination parcel shapefile
+    :param dest_parcels: technically only required if *dest_method* == 'multiple', destination parcel shapefile
     :param dest_points: geopandas.GeoDataFrame
     :param G_demand: name of attribute in G refering to node demands, *Default='demand'* 
     :type G_demand: string
@@ -693,7 +695,7 @@ def min_cost_flow_parcels(G='', res_points='', dest_points='', dest_parcels='', 
     :type G_capacity: string
     :param G_weight: name of attribute in G refering to edge weights, *Default='travel_time'* 
     :type G_weight: string  
-    :param dest_method: either 'single', or 'multiple', determines which destination point methodology to use. Either connecting to nearest single node or multiple nearest nodes
+    :param dest_method: either 'single', or 'multiple', determines which destination point methodology to use. Either connecting destinations/sinks to nearest single node or multiple nearest nodes
     :type dest_method: string
     :returns: 
         - **flow_dictionary**, dictionary of dictionaries keyed by nodes for edge flows
@@ -702,8 +704,7 @@ def min_cost_flow_parcels(G='', res_points='', dest_points='', dest_parcels='', 
     :Raises: nx.NetworkXUnfeasible if all demand cannot be satisfied, i.e., all residential parcels cannot reach the resource.
 
     ''' 
-    # for many functions to work, graph needs to be a digraph (NOT a multidigraph) i.e., no parallel edges
-    # TODO factor in check of parallel edges. For now, just convert to digraph
+    # For algorithm to function properly, need to remove parallel and self loops by converting to digraph
     G = nx.DiGraph(G)
     # Travel times must be whole numbers -  round values if not whole numbers
     for x in G.edges:
@@ -723,6 +724,7 @@ def min_cost_flow_parcels(G='', res_points='', dest_points='', dest_parcels='', 
             kwargs = {f"{G_weight}": 0}
             G.add_edge(x, 99999999, **kwargs)
 
+    # if snapping destination parcels to nearest multiple nodes, based on parcel vertices
     elif dest_method == 'multiple':
         # Find the source and sink demands and append to graph G
         G, unique_origin_nodes, unique_dest_nodes_list, positive_demand, shared_nodes, res_points, dest_parcels = nearest_nodes_vertices(G=G, res_points=res_points, dest_parcels=dest_parcels, G_demand=G_demand)
@@ -732,7 +734,7 @@ def min_cost_flow_parcels(G='', res_points='', dest_points='', dest_parcels='', 
         sums=0
         for unique_node in unique_origin_nodes:
             sums -= G.nodes[unique_node][G_demand]
-            kwargs = {f"{G_weight}": 0, f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}  # TODO: KWARGS
+            kwargs = {f"{G_weight}": 0, f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}  
             G.add_edge(0, unique_node, **kwargs)
             # since we added an artificial source node, all original source nodes must have a zero demand
             G.nodes[unique_node][G_demand]=0
@@ -740,31 +742,33 @@ def min_cost_flow_parcels(G='', res_points='', dest_points='', dest_parcels='', 
         # add the super_sink that everything goes to 
         G.add_nodes_from([(99999999, {G_demand: positive_demand})])
 
+        # artificial node id tracker - useful in maintianing compatability with dtype
+        dest_node_ids = 99999998
         # identify the destination nodes, and create artifical sink edges
         # need to relate the nodes that are nearest to corners of parcels with the dest_points to associate the appropriate capacity to 
         for idx, dest_parcel in dest_parcels.iterrows():
             dest_node = dest_points[dest_points.geometry.within(dest_parcel.geometry)]
             #since we could have multiple dest nodes within a single boundary (multiple resources located at same parcel) need to iterate through dest_node
             for i, node in dest_node.iterrows():
+                dest_node_ids -= 1
                 # add the dest node to the graph using OSMID as its ID
-                # TODO: explore option about plotting with physical lines
-                # x = node.geometry.x
-                # y = node.geometry.y
-                # G.add_nodes_from([(node['osmid'], {'demand': 0, 'x':x, 'y':y})])
-                G.add_nodes_from([(node['osmid'], {G_demand: 0})])
+                G.add_nodes_from([(dest_node_ids, {'demand': 0})])
 
                 # add links from nearest intersections to parcel centroid
                 for nearest_intersection in unique_dest_nodes_list[idx]:
-                    kwargs = {G_weight: 0, G_capacity: 999999999}  # TODO: KWARGS
-                    G.add_edge(nearest_intersection, node['osmid'], **kwargs)
+                    kwargs = {G_weight: 0, G_capacity: 999999999}
+                    G.add_edge(nearest_intersection, dest_node_ids, **kwargs)
 
                 # add link from parcel centroid to super sink
-                # TODO: This is where I can specifically add capacities for each specific grocery store
+                # TODO2: This is where I can specifically add capacities for each specific grocery store
                 # FOR NOW: just setting capacity to a high amount 
                 kwargs = {G_weight: 0, G_capacity: 999999999}
-                G.add_edge(node['osmid'], 99999999, **kwargs)
+                G.add_edge(dest_node_ids, 99999999, **kwargs)
 
 
+#
+
+#
     # run the min_cost_flow function to retrieve FlowDict
     try:
         flow_dictionary = nx.min_cost_flow(
@@ -776,46 +780,47 @@ def min_cost_flow_parcels(G='', res_points='', dest_points='', dest_parcels='', 
         return None, None
 
 
-def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity', G_weight='travel_time', G_demand='demand', dest_method='single', dest_parcels=None, ignore_capacity=False):
+def max_flow_parcels(G: nx.Graph, 
+                     res_points: gpd.GeoDataFrame, 
+                     dest_points: gpd.GeoDataFrame, 
+                     dest_parcels: gpd.GeoDataFrame=None, 
+                     G_capacity='capacity', 
+                     G_weight='travel_time', 
+                     G_demand='demand', 
+                     dest_method='single', 
+                     ignore_capacity=False) -> tuple[dict, int, int, str]:
     '''
     Find maximum flow with minimum cost of a network between residential parcels and a given resource.
     
-    Unlike :func:`min_cost_flow_parcels`, this function calculates the maximum flow from all of the residential parcels to a given resource.
-    Meaning, this function is independent of whether or not every residential parcel can actually reach a resource.
-    This function uses the same snapping methodology as :func:`min_cost_flow_parcels`, see there for comments on how this works.
-    
-    This function creates both an artifical source and sink between residential parcels and resouce locations respectively. Furthermore,
-    the capacity that connects the artifical source to residential parcel intersections (see :func:`min_cost_flow_parcels` for discussion on method)
-    is equal to the number of residential parcels that are close to that intersection. This way the maximum flow ends up being the maximum number
-    of households.
+    This function calculates the maximum feasible flow from all sources (residential parcels) and sinks (destination parcels). This function is independent of whether or not every residential parcel can actually reach a resource. Residential and resource parcels are snapped to the road network using :func:`nearest_nodes` and :func:`nearest_nodes_vertices`. If the *dest_method* argument is set to 'single', destination parcels are snapped to their nearest nodes. If the *dest_method* argument is set to 'multiple', than destination parcels are snapped to the nearest nodes for each vertex of the parcel boundary. Similar to other functions, source demand is the sum of the nearest residential parcels that share that node as their nearest and if a residential parcel and shares a nearest node with a destination parcel this demand is ignored and they are assumed to be within walking distance.
 
-    :param G: Graph network. Will be converted to DiGraph in function
+
+    :param G: Graph network
     :type G: networkx.Graph [Multi, MultiDi, Di]
     :param res_points: Point locations of all of the residential parcels
     :type res_points: geopandas.GeoDataFrame
     :param dest_points: Point locations of all of the resources the residential parcels are to be routed to
     :type dest_points: geopandas.GeoDataFrame
+    :param dest_parcels: echnically only required if *dest_method* == 'multiple', destination parcel shapefile
+    :type dest_parcels: geopandas.GeoDataFrame
     :param G_capacity: name of attribute in G refering to edge capacities, *Default='capacity'* 
     :type G_capacity: string
     :param G_weight: name of attribute in G refering to edge weights, *Default='travel_time'* 
     :type G_weight: string  
     :param dest_method: either 'multiple' or 'single', determines snapping mechanism for destination points, if it uses multiple vertices or just the nearest vertice
     :type dest_method: string
-    :param dest_parcels: If dest_method =='multiple', need the destination resource parcels as an input
-    :type dest_parcels: geopandas.GeoDataFrame
     :param ignore_capacity: if True, road link capacities will be set to infinity. If False, original road capacities are used
     :type ignore_capacity: bool
     :returns: 
         - **flow_dictionary**, dictionary of dictionaries keyed by nodes for edge flows
         - **cost_of_flow**, integer, total cost of all flow. If weight/cost is travel time, this is the total time for everyone to reach the resource (seconds).
         - **max_flow**, integer, the maximum flow (i.e., households) that can access the resource
-        - **access**, string, either 'Complete' or'Partial', representing if every residential parcel can/cannot access the resource
+        - **access**, string, either 'Complete' or 'Partial', representing if every residential parcel can/cannot access the resource
     :rtype: tuple
 
     '''
 
     # for many functions to work, graph needs to be a digraph (NOT a multidigraph) i.e., no parallel edges
-    # TODO factor in check of parallel edges. For now, just convert to digraph
     G = nx.DiGraph(G)
 
     # Based on input, change capacities 
@@ -837,7 +842,7 @@ def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity',
         sums=0
         for unique_node in unique_origin_nodes:
             sums -= G.nodes[unique_node][G_demand]
-            kwargs = {f"{G_weight}": 0, f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}  # TODO: KWARGS
+            kwargs = {f"{G_weight}": 0, f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}  
             G.add_edge(0, unique_node, **kwargs)
             # since we added an artificial source node, all original source nodes must have a zero demand
             G.nodes[unique_node][G_demand]=0
@@ -858,7 +863,7 @@ def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity',
         sums=0
         for unique_node in unique_origin_nodes:
             sums -= G.nodes[unique_node][G_demand]
-            kwargs = {f"{G_weight}": 0, f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}  # TODO: KWARGS
+            kwargs = {f"{G_weight}": 0, f"{G_capacity}": G.nodes[unique_node][G_demand]*-1} 
             G.add_edge(0, unique_node, **kwargs)
             # since we added an artificial source node, all original source nodes must have a zero demand
             G.nodes[unique_node][G_demand]=0
@@ -866,30 +871,30 @@ def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity',
         # add the super_sink that everything goes to 
         G.add_nodes_from([(99999999, {G_demand: positive_demand})])
 
+
+        # artificial node id tracker - useful in maintianing compatability with dtype
+        dest_node_ids = 99999998
+
         # identify the destination nodes, and create artifical sink edges
         # need to relate the nodes that are nearest to corners of parcels with the dest_points to associate the appropriate capacity to 
         for idx, dest_parcel in dest_parcels.iterrows():
             dest_node = dest_points[dest_points.geometry.within(dest_parcel.geometry)]
             #since we could have multiple dest nodes within a single boundary (multiple resources located at same parcel) need to iterate through dest_node
             for i, node in dest_node.iterrows():
+                dest_node_ids -= 1
                 # add the dest node to the graph using OSMID as its ID
-                # TODO: explore option about plotting with physical lines
-                # x = node.geometry.x
-                # y = node.geometry.y
-                # G.add_nodes_from([(node['osmid'], {'demand': 0, 'x':x, 'y':y})])
-                G.add_nodes_from([(node['osmid'], {G_demand: 0})])
+                G.add_nodes_from([(dest_node_ids, {G_demand: 0})])
 
                 # add links from nearest intersections to parcel centroid
                 for nearest_intersection in unique_dest_nodes_list[idx]:
-                    kwargs = {G_weight: 0, G_capacity: 999999999}  # TODO: KWARGS
-                    G.add_edge(nearest_intersection, node['osmid'], **kwargs)
+                    kwargs = {G_weight: 0, G_capacity: 999999999} 
+                    G.add_edge(nearest_intersection, dest_node_ids, **kwargs)
 
                 # add link from parcel centroid to super sink
-                # TODO: This is where I can specifically add capacities for each specific grocery store
+                # TODO2: This is where I can specifically add capacities for each specific grocery store
                 # FOR NOW: just setting capacity to a high amount 
                 kwargs = {G_weight: 0, G_capacity: 999999999}
-                G.add_edge(node['osmid'], 99999999, **kwargs)
-
+                G.add_edge(dest_node_ids, 99999999, **kwargs)
 
     # run the max_flow_min_cost function to retrieve FlowDict
     flow_dictionary = nx.max_flow_min_cost(
@@ -908,19 +913,19 @@ def max_flow_parcels(G='', res_points='', dest_points='', G_capacity='capacity',
     return flow_dictionary, cost_of_flow, max_flow, access
 
 
-def plot_aoi(G='', res_parcels='', 
-                    resource_parcels='', 
-                    background_edges=None,
-                    edge_width=None, 
-                    edge_color=None,
-                    bbox=None, 
-                    loss_access_parcels=None, 
-                    scalebar=False,
-                    inundation=None, 
-                    insets=None, 
-                    save_loc=None,
-                    raster=None,
-                    decomp_flow=False):
+def plot_aoi(G: nx.Graph,
+            res_parcels: gpd.GeoDataFrame, 
+            resource_parcels: gpd.GeoDataFrame, 
+            background_edges: gpd.GeoDataFrame=None,
+            edge_width: str = None, 
+            edge_color: str = None,
+            bbox: gpd.GeoDataFrame = None, 
+            loss_access_parcels: gpd.GeoDataFrame = None, 
+            scalebar: bool = False,
+            inundation: rasterio.io.DatasetReader = None, 
+            insets: list[str]=None, 
+            save_loc: str = None,
+            decomp_flow: bool = False):
     '''
     Create a plot with commonly used features.
 
@@ -933,26 +938,26 @@ def plot_aoi(G='', res_parcels='',
     :param res_parcels: The residential parcels to be plotted. Default color is tan.
     :type res_parcels: geopandas.GeoDataframe
     :param resource_parcels: The resource parcels to be plotted. Default color is blue.
-    :type resource_parcels: geopandas.GeoDataframe
-    :param edge_width: *Optional*, attribute of *G* to scale road edges by (*Default=None*).
+    :type resource_parcels: geopandas.GeoDataFrame
+    :param background_edges: *Optional*, background edges of plot if missing edges in input graph (*Default=None*)
+    :type background_edges: geopandas.GeoDataFrame
+    :param edge_width: *Optional*, attribute of *G* to scale road edges by (*Default=None*)
     :type edge_width: string
-    :param edge_color: attribute in G to color edges. Designed to show max inundation on the road
+    :param edge_color: attribute in G to color edges. Originally designed to show max inundation on the road, other attributes can be used though (*Default=None*)
     :type edge_color: string
-    :param bbox: set boundary of figures. If *None*, bbox set to max boundary of *G*. 
+    :param bbox: set boundary of figures. If *None*, bbox set to max boundary of *G* (*Default=None*) 
     :type bbox: geopandas.GeoDataframe
-    :param lose_access_parcels: The residential parcels that can no longer access a resource (i.e., due to flooding) (*Default=None*).
+    :param lose_access_parcels: The residential parcels that can no longer access a resource (i.e., due to flooding) (*Default=None*)
     :type lose_access_parcels: geopandas.GeoDataframe
-    :param scalebar: If *True*, plots a scalebar (*Default=False*).
+    :param scalebar: If *True*, plots a scalebar (*Default=False*)
     :type scalebar: bool
     :param inundation: Raster of inundation to plot over figure. Use rasterio.open
     :type inundadtion: rasterio Object
-    :param insets: File locations of areas to create inset box outlines (*Default=None*). 
+    :param insets: File locations of areas to create inset box outlines (*Default=None*) 
     :type insets: list of strings
-    :param save_loc: Location to save figure (*Default=None*).
+    :param save_loc: Location to save figure (*Default=None*)
     :type save_loc: string
-    :param raster: raster of inundation extent
-    :type raster: .tif file, use rasterio.open()
-    :param decomp_flow: if True, plot residential parcels with color ramp symbolizing travel time
+    :param decomp_flow: if True, plot residential parcels with color ramp symbolizing travel time (*Default=False*)
     :type decomp_flow: bool
 
     :return: **fig**, the produced figure
@@ -987,7 +992,7 @@ def plot_aoi(G='', res_parcels='',
     # plot roads, residential parcels, and resource parcels
     # if decomp_flow is True, plot res parcels with scale bar to show travel times
     if decomp_flow is True:
-        res_parcels.plot(ax=ax, color='tan') # alternative color is antiquewhite
+        res_parcels.plot(ax=ax, color='tan') 
         # # IQR METHOD to mask impact of outliers
         costs = sorted(res_parcels['cost_of_flow'].tolist())
         costs = [x for x in costs if math.isnan(x)==False]
@@ -995,25 +1000,13 @@ def plot_aoi(G='', res_parcels='',
         iqr=q3-q1
         upper_bound=q3+(3*iqr)
         res_parcels.loc[res_parcels['cost_of_flow']>=upper_bound, ['cost_of_flow']]=upper_bound
-        # res_parcels.plot(ax=ax, column='cost_of_flow',cmap='bwr', legend=True)
         res_parcels.plot(ax=ax, column='cost_of_flow',cmap='bwr', legend=False)
-        # add colorbar
-        # ax_cbar = fig.colorbar(plt.cm.ScalarMappable(norm=colors.Normalize(vmin=0, vmax=upper_bound), cmap='bwr'),ax=ax,
-        #                         ticks=np.linspace(0,upper_bound,6))
         
-        
-        #res_parcels.plot(ax=ax, column='cost_of_flow',cmap='bwr', scheme='natural_breaks',k=10, legend=True)
     else:
-        res_parcels.plot(ax=ax, color='tan')# alternative color is antiquewhite
+        res_parcels.plot(ax=ax, color='tan')
     
     # plot the resource parcels
     resource_parcels.plot(ax=ax, color='mediumseagreen', edgecolor='darkgreen', linewidth=0.5)
-
-    # #TODO: ADD FEATURE TO HIGHLIGHT NODES - USEFUL IN ORDER TO TRANSLATE RESULTS TO GRAPH QUICKLY WHILE TESTING 
-    # G_gdf_nodes.loc[[6016], 'geometry'].plot(ax=ax, color='green')
-    # G_gdf_nodes.loc[[10727], 'geometry'].plot(ax=ax, color='green')
-    # G_gdf_nodes.loc[[7196], 'geometry'].plot(ax=ax, color='green')
-    # #### END TEST
 
     # option to plot loss of access parcels
     if loss_access_parcels is None:
@@ -1174,11 +1167,11 @@ def plot_aoi(G='', res_parcels='',
     return(fig)
 
 
-def summary_function(G=''):
+def summary_function(G: nx.Graph):
     '''
     Return quick summary information regarding a network.
 
-    This could be expanded upon in the future to be able to quickly access various summary statistics.
+    This function can be useful for displaying quick information describing the attributes of a network. It should be expanded upon to show more relevent information compared to its current state. 
 
     :param G: Graph network
     :type G: networkx.Graph [Multi, MultiDi, Di]
@@ -1242,28 +1235,32 @@ def summary_function(G=''):
     return(num_edges, num_nodes, fig)
 
 
-def inundate_network(G, path, inundation, G_capacity='capacity',G_width='width',G_speed='speed_kph',G_length='length',pp=4, name='AOI_Graph_Inundated'):
+def inundate_network(G: nx.Graph, 
+                     path: str, 
+                     inundation: str, 
+                     G_capacity: str = 'capacity',
+                     G_width: str = 'width',
+                     G_speed: str = 'speed_kph', 
+                     G_length: str = 'length',
+                     pp: int = 4, 
+                     name: str = 'AOI_Graph_Inundated'):
     '''
     Create a new graph network based on the imapct of an inundation layer.
 
-    Currently - An inundation layer is overlayed on a graph network. The maximum depth that intersects each road segment (within a given distance based on the type of road). That maximum depth is then equated to a decrease in speed and capacity on that entire road segment.
-
-    This function adds attributes to the graph network including including:
+    An inundation layer is overlayed on a graph network to determine the maximum depths that intersect each road segment. The maximum depth is then used to calculate the reduction in speed and capacity on that entire road segment using a conservative, moderate, and aggressive equation. This function adds attributes to the graph network including:
 
     - max_inundation_mm, the maximum inundation in milimeters
     - inundation_capacity_{mod}, the reduced capacity of the road segement
     - kph_{mod}, the reduced speed of the road segment
     - inundation_travel_time_{mod}, the new travel time of the road segment
 
-    For inundation_capacity_, kph_, and inundation_travel_time_, there are three seperate occurances of each attribute with the suffix mod, agr, or con refering to the moderate, aggressive, or conservative depth-disruption equation is used in its calculation. All are quadratically decreasing depending on the maximum allowable road depth which are 300, 150, or 600 respectively. Any road segments with a greater depth of water on a road segement that these values has a travel time and capacity set equal to 0.
+    For inundation_capacity_, kph_, and inundation_travel_time_, there are three seperate occurances of each attribute with the suffix 'mod', 'agr', or 'con' refering to the moderate, aggressive, or conservative depth-disruption equation that is used in its calculation. All are quadratically decreasing depending on the maximum allowable road depth which are 300, 150, or 600 respectively. Any road segments with a greater depth of water on a road segement that these values has a travel time and capacity set equal to 0.
 
     This function also relies on parallel processing. Zonal statistics for each road segment is time consuming, but also independent of each other and therefore is easily parallelized. In one test, a single thread took 10 minutes to process 36,000 edges. The same study area took less than 3 minutes to process with 4 threads. 
-    
-    **Important Note** - There are a number of methodologies in which this can be accomplished, and others need to be explored further. The documenation listed must be updated regularly whenever changes are made to reflect current options of this function. Just a few things that need to be addressed include:
 
-    - impact on partial segments compared to entire segment
+    The inundation raster and graph network should have the same coordinate reference system. 
 
-    :param G: The graph network. Should have projected coordinates.
+    :param G: The graph network
     :type G: networkx.Graph [Multi, MultiDi, Di]
     :param path: File path to save output graph network to. Will have the name 'AOI_Graph_Inundated'
     :type path: string
@@ -1291,8 +1288,6 @@ def inundate_network(G, path, inundation, G_capacity='capacity',G_width='width',
     # Set buffer geometry of edges gdf based on road width
     edges['buffer_geometry'] = edges.buffer(distance=edges[G_width], cap_style=2)
     edges.set_geometry(col='buffer_geometry', drop='geometry, inplace=True')
-    # edges['buffer_geometry'].to_file(
-    #     '/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/test_edges.shp')
 
     # BEGIN PARALLEL PROCESSING
     # geometry column number
@@ -1344,56 +1339,27 @@ def inundate_network(G, path, inundation, G_capacity='capacity',G_width='width',
         edges[f'inundation_capacity_{opt}'] = edges[G_capacity]
         edges.loc[edges[f'kph_{opt}'] == 0, f'inundation_capacity_{opt}'] = 0
 
-
-    # edges.loc[edges['max_inundation_mm']>=307.167, 'PSR_mod'] = 0
-    # edges.loc[edges['max_inundation_mm'] < 307.167, 'PSR_mod'] = (0.0009*edges['max_inundation_mm']**2 - 0.5529*edges['max_inundation_mm'] + 86.9448)/86.9448
-    # # Conservative
-    # edges.loc[edges['max_inundation_mm']>=600, 'PSR_con'] = 0
-    # edges.loc[edges['max_inundation_mm'] < 600, 'PSR_con'] = (0.0002415*edges['max_inundation_mm']**2 - 0.2898*edges['max_inundation_mm'] + 86.94)/86.94
-    # # Aggressive
-    # edges.loc[edges['max_inundation_mm']>=150, 'PSR_agr'] = 0
-    # edges.loc[edges['max_inundation_mm'] < 150, 'PSR_agr'] = (0.003864*edges['max_inundation_mm']**2 - 1.1592*edges['max_inundation_mm'] + 86.94)/86.94
-
-    # # calculate the inundation speed based on reduction equation
-    # edges['kph_mod'] = edges[G_speed]*edges['PSR_mod']
-    # edges['kph_con'] = edges[G_speed]*edges['PSR_con']
-    # edges['kph_agr'] = edges[G_speed]*edges['PSR_agr']
-    
-    # # calculate inundation travel time in seconds
-    # edges['inundation_travel_time_mod'] = edges[G_length]/(edges['kph_mod']/60/60*1000)
-    # edges['inundation_travel_time_con'] = edges[G_length]/(edges['kph_con']/60/60*1000)
-    # edges['inundation_travel_time_agr'] = edges[G_length]/(edges['kph_agr']/60/60*1000)
-
-    # # replace travel time infs with 0 (when speed reduced to 0)
-    # edges.loc[edges['inundation_travel_time_mod'] == np.inf,'inundation_travel_time_mod'] = 0
-    # edges.loc[edges['inundation_travel_time_con'] == np.inf,'inundation_travel_time_con'] = 0
-    # edges.loc[edges['inundation_travel_time_agr'] == np.inf,'inundation_travel_time_agr'] = 0
-
-    # # Create inundation capacity. if speed is reduced to zero, setting capacity equal to 0 because it cannot support travel
-    # edges['inundation_capacity_mod'] = edges[G_capacity]
-    # edges['inundation_capacity_con'] = edges[G_capacity]
-    # edges['inundation_capacity_agr'] = edges[G_capacity]
-    # edges.loc[edges['kph_mod'] == 0, 'inundation_capacity_mod']=0
-    # edges.loc[edges['kph_con'] == 0, 'inundation_capacity_con']=0
-    # edges.loc[edges['kph_agr'] == 0, 'inundation_capacity_agr'] = 0
-
     # save edited graph
     new_graph = ox.graph_from_gdfs(nodes, edges)
     save_2_disk(G=new_graph, path=path, name=name)
     return (new_graph)
 
 
-def flow_decomposition(G='', res_points='', dest_points='',res_parcels='',dest_parcels='', G_demand='demand', G_capacity='capacity', G_weight='travel_time', dest_method='single'):
+def flow_decomposition(G: nx.Graph, 
+                       res_points: gpd.GeoDataFrame, 
+                       dest_points: gpd.GeoDataFrame,
+                       res_parcels: gpd.GeoDataFrame,
+                       dest_parcels: gpd.GeoDataFrame, 
+                       G_demand: str ='demand', 
+                       G_capacity: str ='capacity', 
+                       G_weight: str ='travel_time', 
+                       dest_method: str = 'single') -> tuple[dict, dict, gpd.GeoDataFrame, gpd.GeoDataFrame]:
     '''
     Given a network, G, decompose the maximum flow (w/ minimum cost) into individual flow paths.
 
-    This function serves the role of taking a given network, calculating its maximum flow (with minimum cost), and decomposing the resultant network solution into a feasible series of individual flow pathways. A number of flow decomposition solutions can exist for any given network, *especially* under circumstance where a flow from the same sources travels along different paths. The decomposed information including path, sink, and cost of the path are related back to the residential and destination parcel boundaries for mapping purposes.
+    This function determines the maximum feasible flow (with a minimum cost) and then decomposes the resultant network solution into a set of individual feasible flow paths. The decomposed information including path, sink, and cost of each path is related back to and returned in the residential and destination parcel boundaries outputs. The returned decomposed flow is just one possible solution. Flows are decomposed by looking at the shortest path from a super sink to a super source, resulting in a "greedy" algorithm that routes closer parcels first, and furthest parcels last. Therefore, the decomposed network may have a higher variance, as compared to other possible decomposition solutions. 
 
-    **Important Note** - This function is set up with the intention that all of the flow from one source may not go to the same sink or travel along the same pathway. This is not the case with how the maximum flow is currently calculated, but under more realisitic travel cost functions this will likely change.
-
-    **Furthermore,** this flow decomposition algorithm is just one possible solution. Flows are decomposed by looking at the shortest unit path (taking into account edge weight/costs) from the aritical source to sink. This "greedy" algorithm produces individual flow paths that will have a higher variance, giving preference to paths that are shorter. 
-    
-    If multiple divering flow paths exist (i.e., same source but different paths/sinks), the function becomes **stochastic** and assigns a residential parcel (who has that source) a random sink, path, and cost that are representative of the distribution of sinks-paths-costs from that source (the sink-path-costs are all appropriately selected in that the cost reflects the path to that specific sink). 
+    If multiple diverging flow paths exist (i.e., a residential parcel has the same sourec but a different path to a potentially different resource parcel), the function becomes stochastic. This means that each residential parcel sharing a common source node is assigned a random feasible sink-path-cost from the feasible set.
 
 
     :param G: The graph network
@@ -1406,7 +1372,7 @@ def flow_decomposition(G='', res_points='', dest_points='',res_parcels='',dest_p
     :type res_parcels: geopandas.GeoDataFrame
     :param dest_parcels: Polygons of all of a specific destination/resource
     :type dest_parcels: geopandas.GeodataFrame
-    :param G_demand: name of attribuet in G refering to node demand, *Default='demand*
+    :param G_demand: name of attribute in G refering to node demand, *Default='demand*
     :type G_demand: string
     :param G_capacity: name of attribute in G refering to edge capacities, *Default='capacity'* 
     :type G_capacity: string
@@ -1429,6 +1395,7 @@ def flow_decomposition(G='', res_points='', dest_points='',res_parcels='',dest_p
     for x in G.edges:
             G.edges[x][G_weight] = round(G.edges[x][G_weight])
     
+    # TODO:  Can I delete this?
     G=copy.deepcopy(G)
 
     if dest_method=='single':
@@ -1487,7 +1454,6 @@ def flow_decomposition(G='', res_points='', dest_points='',res_parcels='',dest_p
         sums = 0
         for unique_node in unique_origin_nodes:
             sums -= G.nodes[unique_node][G_demand]
-            # TODO: KWARGS
             kwargs = {f"{G_weight}": 0,
                       f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}
             G.add_edge(0, unique_node, **kwargs)
@@ -1497,33 +1463,33 @@ def flow_decomposition(G='', res_points='', dest_points='',res_parcels='',dest_p
         # add the super_sink that everything goes to
         G.add_nodes_from([(99999999, {G_demand: positive_demand})])
 
+        # artificial node id tracker - useful in maintianing compatability with dtype
+        dest_node_ids = 99999998
         # identify the destination nodes, and create artifical sink edges
         # need to relate the nodes that are nearest to corners of parcels with the dest_points to associate the appropriate capacity to
         for idx, dest_parcel in dest_parcels.iterrows():
-            dest_node = dest_points[dest_points.geometry.within(
-                dest_parcel.geometry)]
+            dest_node = dest_points[dest_points.geometry.within(dest_parcel.geometry)]
             #since we could have multiple dest nodes within a single boundary (multiple resources located at same parcel) need to iterate through dest_node
             for i, node in dest_node.iterrows():
+                dest_node_ids -= 1
                 # add the dest node to the graph using OSMID as its ID
-                # TODO: explore option about plotting with physical lines
-                # x = node.geometry.x
-                # y = node.geometry.y
-                # G.add_nodes_from([(node['osmid'], {'demand': 0, 'x':x, 'y':y})])
-                G.add_nodes_from([(node['osmid'], {G_demand: 0})])
+                G.add_nodes_from([(dest_node_ids, {G_demand: 0})])
+                # for sink insights, need to set dest_node_ids to attribute within dest_points
+                dest_points.loc[dest_points.geometry == node['geometry'], 'dest_node_ids'] = dest_node_ids
+
 
                 # add links from nearest intersections to parcel centroid
                 for nearest_intersection in unique_dest_nodes_list[idx]:
-                    # TODO: KWARGS
                     kwargs = {G_weight: 0, G_capacity: 999999999}
-                    G.add_edge(nearest_intersection, node['osmid'], **kwargs)
+                    G.add_edge(nearest_intersection, dest_node_ids, **kwargs)
 
                 # add link from parcel centroid to super sink
-                # TODO: This is where I can specifically add capacities for each specific grocery store
+                # TODO2: This is where I can specifically add capacities for each specific grocery store
                 # FOR NOW: just setting capacity to a high amount
                 kwargs = {G_weight: 0, G_capacity: 999999999}
-                G.add_edge(node['osmid'], 99999999, **kwargs)
+                G.add_edge(dest_node_ids, 99999999, **kwargs)
 
-        
+
     # Create intermediate graph from max_flow_parcels dictionary, consisting of only edges that have a flow going across them
     # Set the allowable flow of each edge in intermediate graph to the flow going across that edge in original max_flow_parcels solution
     G_inter = nx.DiGraph()
@@ -1541,7 +1507,7 @@ def flow_decomposition(G='', res_points='', dest_points='',res_parcels='',dest_p
     
     # Begin greedy algorithm for flow decomposition
     # loop through all shortest paths from artifical source to artificial sink
-    #TODO: CURRENTLY-> set up as greedy algorithm, will produce highest variance in final flows if flow paths from common sources split
+    # CURRENTLY-> set up as greedy algorithm, will produce highest variance in final flows if flow paths from common sources split
     while len(G_inter.edges)>0:
         # Find the shortest path from the artifical source to artificial sink
         path = ox.distance.shortest_path(G_inter,0,99999999,weight=G_weight)
@@ -1598,7 +1564,7 @@ def flow_decomposition(G='', res_points='', dest_points='',res_parcels='',dest_p
                 sink_insights[sink]['Total flow w/o walking']+= limiting_flow
                 sink_insights[sink]['Total flow w/ walking']+= limiting_flow 
             else:
-                near_nodes = list(map(int, dest_points.loc[dest_points['osmid'] == sink, 'nearest_nodes'].iloc[0].split(' ')))
+                near_nodes = list(map(int, dest_points.loc[dest_points['dest_node_ids'] == sink, 'nearest_nodes'].iloc[0].split(' ')))
                 sink_insights[sink] = {'Number of unique paths': 1, 'Total flow w/o walking': limiting_flow, 'Total flow w/ walking': limiting_flow + len(res_points.loc[res_points['nearest_node'].isin(near_nodes)])}
 
     # Begin relating decomposition results to outputs 
@@ -1701,17 +1667,26 @@ def flow_decomposition(G='', res_points='', dest_points='',res_parcels='',dest_p
                                                                                         'Total flow w/o walking',
                                                                                         'Total flow w/ walking']).reset_index()
 
-    # append dest poitns with appropriate flow information
+    # append dest points with appropriate flow information
     if dest_method == 'single':
         dest_points = dest_points.merge(sink_insights_df, how='left', left_on='nearest_node', right_on='index')
     if dest_method == 'multiple':
-        dest_points = dest_points.merge(sink_insights_df, how='left', left_on='osmid', right_on='index')
+        dest_points = dest_points.merge(sink_insights_df, how='left', left_on='dest_node_ids', right_on='index')
        
     # Spatial join the res_parcels/res_points and dest_parcels/dest_points data
-    res_parcels = gpd.sjoin(res_parcels,res_points)
+    res_parcels = gpd.sjoin(res_parcels, res_points)
     dest_parcels = gpd.sjoin(dest_parcels, dest_points)
-  
+
+    # sjoin is messing with dataframe attributes, editing so returns only attributes we are interested in from this function
+    # to avoid data issues, for now only returning attributes created during this funciton
+    res_attributes = ['geometry', 'nearest_node','source', 'sink', 'walkable?', 'path', 'cost_of_flow', 'service']
+    dest_attributes = ['geometry', 'dest_node_ids', 'Number of unique paths','Total flow w/o walking','Total flow w/ walking','nearest_nodes']
+    dest_parcels['nearest_nodes'] = dest_parcels['nearest_nodes_right']
+    res_parcels.drop(columns=[col for col in res_parcels if col not in res_attributes], inplace=True)
+    dest_parcels.drop(columns=[col for col in dest_parcels if col not in dest_attributes], inplace=True)
+
     # metrics
+    # Right now, no need to print, but could export in some manner
     # convert to list of flows
     cost_list = sorted(res_parcels['cost_of_flow'].tolist())
     #remove nans 
@@ -1737,24 +1712,35 @@ def flow_decomposition(G='', res_points='', dest_points='',res_parcels='',dest_p
     # average flow cost(excluding outliers)
     mean_cost_ex = np.mean(cost_list_wo)
 
-    print(f'percent of flow major outlier: {perc_outlier}')
-    print(f'cost of flow with outliers: {total_cost_in}')
-    print(f'cost of flow without outliers: {total_cost_ex}')
-    print(f'average cost of flow with outliers: {mean_cost_in}')
-    print(f'average cost of flow without outliers: {mean_cost_ex}')
-    print(f'median cost of flow with outliers: {med_cost_in}')
-    print(f'median cost of flow without outliers: {med_cost_ex}')
+    # print(f'percent of flow major outlier: {perc_outlier}')
+    # print(f'cost of flow with outliers: {total_cost_in}')
+    # print(f'cost of flow without outliers: {total_cost_ex}')
+    # print(f'average cost of flow with outliers: {mean_cost_in}')
+    # print(f'average cost of flow without outliers: {mean_cost_ex}')
+    # print(f'median cost of flow with outliers: {med_cost_in}')
+    # print(f'median cost of flow without outliers: {med_cost_ex}')
 
 
     # return the decomposed paths dict of dict, the sink_insights dict of dict, and the res_locs/dest_locs geodataframes
     return decomposed_paths, sink_insights, res_parcels, dest_parcels
 
 
-def shortestPath(origin, capacity_array, weight_array):
+# HELPER FUNCTIONS - all predominently utilized in traffic assignment
+def shortestPath(origin: int, capacity_array: np.array, weight_array: np.array):
     """
-    This method finds the shortest path from origin to all other nodes
-    in the network.  
-    Algorithm utilized is Dijkstra's.s
+    This method finds the shortest path from origin to all other nodes in the network. Uses Dijkstra's algorithm.
+    
+    :param origin: origin node
+    :type origin: int
+    :param capacity_array: node-node array of edge capacities
+    :type capacity_array: np.array
+    :param weight_array: node-node array of edge weights (i.e., travel times)
+    :type weight_array: np.array
+
+    :returns:
+        - **backnodes**, np.array indiciating previous node in shorest path
+        - **costlabel**, list of costs associated with each node
+    :rtype: tuple
 
     """
     # Need the number of nodes for calculations
@@ -1772,8 +1758,9 @@ def shortestPath(origin, capacity_array, weight_array):
     # Also creating f_label for final labels
     f_label = []
 
-    # Step 2: Initialize SEL with origin
+    # Step 2: Initialize SEL (scan eligable list) with origin
     sel = [origin]
+    # TODO: Can i delete this x=0?
     x = 0
     # Create termination loop, if sel empty, terminate
     while len(sel) > 0:
@@ -1812,13 +1799,27 @@ def shortestPath(origin, capacity_array, weight_array):
     # costlabel is list of costs associated with each node
     return (backnode, costlabel)
 
-
-def shortestPath_heap(origin, capacity_array, weight_array, adjlist, destination=False):
+def shortestPath_heap(origin: int, capacity_array: np.array, weight_array: np.array, adjlist: list[list], destination: int=False):
     """
-    This method finds the shortest path from origin to all other nodes in the network.
-    Uses a binary heap priority que in an attempt to speed up the shortestPath function.
-    Shortest path algorithm utilized is Dijkstra's.
-    going to use built in function in python called heapq
+    This method finds the shortest path from origin to all other nodes in the network. Uses a binary heap priority que in an attempt to speed up the shortestPath function. Uses Dijkstra's algorithm and built in python function heapq.
+    
+    This function replaces shorestPath because it is a faster alternative due to the binary heap priority que.
+
+    :param origin: origin node
+    :type origin: int
+    :param capacity_array: node-node array of edge capacities
+    :type capacity_array: np.array
+    :param weight_array: node-node array of edge weights (i.e., travel times)
+    :type weight_array: np.array
+    :param adjlist: adjacency list of network edges
+    :type adjlist: nested list
+    :param destination: if not false, set to destination node, terminates algorithm when shortest path to destination node is found
+    :type destination: int
+
+    :returns:
+        - **backnodes**, np.array indiciating previous node in shorest path
+        - **costlabel**, list of costs associated with each node
+    :rtype: tuple
 
     """
 
@@ -1851,10 +1852,6 @@ def shortestPath_heap(origin, capacity_array, weight_array, adjlist, destination
 
             # Step 4: for all arc (i,j) repeat following
             for node_j in adjlist[node_i]:
-            # for node_j, matrix_value in enumerate(capacity_array[node_i]):
-            #     # if matrix_value is equal to -1, no link exist
-            #     if matrix_value == -1:
-            #         pass
                 #also need to skip nodes in f, because already finalized
                 if node_j in f_label:
                     pass
@@ -1881,8 +1878,10 @@ def shortestPath_heap(origin, capacity_array, weight_array, adjlist, destination
     # costlabel is list of costs associated with each node
     return (backnode, costlabel)
 
-
 def pathTo(backnode, costlabel, origin, destination):
+    """
+    Given backnode costlabel, origin, and destination, return a list of nodes that is the shortest path.    
+    """
     cost = costlabel[destination]
     path = [destination]
     idx = destination
@@ -1897,10 +1896,9 @@ def pathTo(backnode, costlabel, origin, destination):
     cost=np.asarray(cost)
     return(path, cost)
 
-
 def pathTo_mod(backnode, costlabel, origin, destination):
-    """test pathTo function to output node-node pairs instead of list of nodes to avoid having to do loops elsewhere
-    
+    """
+    Modified pathTo function to output node-node pairs instead of list of nodes to avoid having to do loops elsewhere
     """
     cost = costlabel[destination]
     path = []
@@ -1933,8 +1931,7 @@ def pathTo_mod(backnode, costlabel, origin, destination):
     cost=np.asarray(cost)
     return(path, cost)
 
-
-###### I DON'T THINK I NEED maxFlow OR mod_search ######
+###### HELPER FUNCTIONS THAT CAN BE REMOVED ######
 def maxFlow(source, sink, numnodes, capacity_array, weight_array):
     """
     This method finds a maximum flow in the network.  Return a tuple
@@ -2031,13 +2028,20 @@ def mod_search(source, flow, numnodes, capacity_array):
                 SEL.append(j)
                 backnode[j] = i
     return reachable, backnode
-###### I DON'T THINK I NEED maxFlow OR mod_search ######
+###### HELPER FUNCTIOSN THAT CAN BE REMOVED ######
 
-
-
-# PARALLELIZATION FUNCTIONS USED IN TRAFFIC ASSIGNMENT
+# PARALLELIZATION HELPER FUNCTIONS USED IN TRAFFIC ASSIGNMENT
 def initial_feasible_flow_parallel(n):
+    """
+    Calculate initial feasible flow in parallel. 
 
+    # TODO: Needs to be much better documented, at a later date. Not sure how to properly add inputs to this function
+    n is array version of OD_matrix where:
+        n[0]: origin
+        n[1]: flow
+        n[2]: destination
+
+    """
     backnode, costlabel = shortestPath_heap(origin=n[0], 
                                                 capacity_array=capacity_array, 
                                                 weight_array=weight_array, 
@@ -2050,8 +2054,13 @@ def initial_feasible_flow_parallel(n):
                             destination=n[2])
     return path
     
-
 def SPTT_parallel(n):
+    """ 
+    Is this just a repeat of initial_feasible_flow_parallel?
+
+    # TODO: Need to check if this can be removed
+    
+    """
     backnode, costlabel = shortestPath_heap(origin=n[0], 
                                             capacity_array=capacity_array, 
                                             weight_array=weight_array_iter,
@@ -2062,19 +2071,21 @@ def SPTT_parallel(n):
                                 origin=n[0], 
                                 destination=n[2])
     return (path, cost)
+# PARALLELIZATION HELPER FUNCTIONS USED IN TRAFFIC ASSIGNMENT
 
 
-def traffic_assignment(G,
-                        res_points, 
-                        dest_points,
-                        dest_parcels,  
-                        G_capacity='capacity', 
-                        G_weight='travel_time', 
-                        algorithm='path_based', 
-                        method='CFW',
-                        link_performance='BPR',
-                        termination_criteria=['iter',0],
-                        dest_method='single'):
+
+def traffic_assignment(G: nx.Graph,
+                        res_points: gpd.GeoDataFrame, 
+                        dest_points: gpd.GeoDataFrame,
+                        dest_parcels: gpd.GeoDataFrame,  
+                        G_capacity: str = 'capacity', 
+                        G_weight: str = 'travel_time', 
+                        algorithm: str = 'path_based', 
+                        method: str = 'CFW',
+                        link_performance: str = 'BPR',
+                        termination_criteria: list[str, int] = ['iter',0],
+                        dest_method: str = 'single'):
     """
     Solves the static traffic assignment problem based using algorithms and termination criteria from user inputs.
 
@@ -2137,10 +2148,9 @@ def traffic_assignment(G,
     #         - Conical delay model
 
     # Convert graph to digraph format
-    # TODO: Need to see if this is having an impact on the output
     G = nx.DiGraph(G)
 
-    # BUG fix? Remove all edges with 0 capacity
+    # Remove all edges with 0 capacity
     G=copy.deepcopy(G)
     no_cap_edges = list(filter(lambda e: e[2] == 0, (e for e in G.edges.data(G_capacity))))
     no_cap_ids = list(e[:2] for e in no_cap_edges)
@@ -2235,7 +2245,7 @@ def traffic_assignment(G,
                     G.add_edge(nearest_intersection, dest_node_ids, **kwargs)
 
                 # add link from parcel centroid to super sink
-                # TODO: This is where I can specifically add capacities for each specific grocery store
+                # TODO2: This is where I can specifically add capacities for each specific grocery store
                 # FOR NOW: just setting capacity to a high amount 
                 kwargs = {G_weight: 0, G_capacity: artificial_capacity}
                 G.add_edge(dest_node_ids, super_sink, **kwargs)
@@ -2294,13 +2304,6 @@ def traffic_assignment(G,
     alpha_array = 0.15
     beta_array = 4
     # create adjacency list - faster for some functions to use this instead of matrix
-    # adjlist = defaultdict(list)
-    # for i in range(capacity_array.shape[0]):
-    #     for j in range(capacity_array.shape[0]):
-    #         if capacity_array[i][j] != -1:
-    #             adjlist[i].append(j)
-
-    # alternative method for creating adjacency list
     adjlist = defaultdict(list)
     row, col = np.where(capacity_array!=-1)
     for i in range(len(row)):
