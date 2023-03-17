@@ -5,6 +5,7 @@
 # https://geoffboeing.com/2016/11/osmnx-python-street-networks/
 
 # Packages actively using
+import sys
 import copy
 import math
 import heapq
@@ -16,6 +17,8 @@ import rasterio.mask
 import networkx as nx
 import geopandas as gpd
 import matplotlib as mpl
+from typing import Union
+from scipy import sparse
 from scipy.stats import iqr
 from rasterio.plot import show
 import matplotlib.pyplot as plt
@@ -27,8 +30,15 @@ from matplotlib.colors import ListedColormap
 from matplotlib_scalebar.scalebar import ScaleBar
 from multiprocessing.pool import ThreadPool as Pool
 
-# packages I may be able to remove
+# packages I use for testing 
 import time
+# use following for testing time:
+    # start=time.time()
+    # ...some code...
+    # end=time.time()
+    # print(end-start)
+
+# packages I may be able to remove
 import fiona
 import random
 import shapely
@@ -40,7 +50,6 @@ from multiprocessing import Process
 
 # set some temporary panda display options
 pd.set_option('display.max_columns', None)
-
 
 ############# NOTES SECTION: contains organized table of todos and bugs that I am actively and planning on working on
     # Bugs should be seen as major issues that need to be addressed ASAP, TODOS are smaller improvements to improve functionality
@@ -310,14 +319,14 @@ def shape_2_graph(source: str):
     return(G)
 
 
-def save_2_disk(G: nx.Graph, path: str, name='AOI_Graph'):
+def save_2_disk(G: nx.MultiDiGraph, path: str, name='AOI_Graph'):
     '''
     Save network as graphxml file.
 
-    Maintaining an original copy of the road network used during an analysis is beneficial because edits to the network (e,g., deletion of inundated edges ir addition of artificial edges) can inadvertnely impact or prevent other analyses or plotting. Users can continue to reload and access the original network under consideration. Typically the input graph, G, will be the graph obtained from :func:`shape_2_graph`.
+    Maintaining an original copy of the road network used during an analysis is beneficial because edits to the network (e,g., deletion of inundated edges ir addition of artificial edges) can inadvertnely impact or prevent other analyses or plotting. Users can continue to reload and access the original network under consideration. Typically the input graph, G, will be the graph obtained from :func:`shape_2_graph`. This function can only save a network if it is a MultiDiGraph.
     
     :param G: Input graph to be saved
-    :type G: networkx.Graph [Multi, MultiDi, Di]
+    :type G: networkx.MultiDiGraph 
     :param path: Path to folder where graph will be saved
     :type path: str
     :param name: Name the graph will be saved as. *Default='AOI_Graph*
@@ -487,7 +496,6 @@ def nearest_nodes(G: nx.Graph, res_points: gpd.GeoDataFrame, dest_points: gpd.Ge
     # Calculate the positive demand: the sink demand
     positive_demand = sum(unique_origin_nodes_counts.values())*-1
 
-    # TODO: I don't think returning res_points or dest_points is neccessary and can be removed - ACTUALLY MIGHT BE USED IN FLOW DECOMP
     return(G, unique_origin_nodes, unique_dest_nodes, positive_demand, shared_nodes, res_points, dest_points)
 
 
@@ -1421,7 +1429,6 @@ def flow_decomposition(G: nx.Graph,
         sums = 0
         for unique_node in unique_origin_nodes:
             sums -= G.nodes[unique_node][G_demand]
-            # TODO: KWARGS
             kwargs = {f"{G_weight}": 0,
                     f"{G_capacity}": G.nodes[unique_node][G_demand]*-1}
             G.add_edge(0, unique_node, **kwargs)
@@ -1726,7 +1733,9 @@ def flow_decomposition(G: nx.Graph,
 
 
 # HELPER FUNCTIONS - all predominently utilized in traffic assignment
-def shortestPath(origin: int, capacity_array: np.array, weight_array: np.array):
+def shortestPath(origin: int, 
+                 capacity_array: np.array, 
+                 weight_array: np.array):
     """
     This method finds the shortest path from origin to all other nodes in the network. Uses Dijkstra's algorithm.
     
@@ -1799,7 +1808,12 @@ def shortestPath(origin: int, capacity_array: np.array, weight_array: np.array):
     # costlabel is list of costs associated with each node
     return (backnode, costlabel)
 
-def shortestPath_heap(origin: int, capacity_array: np.array, weight_array: np.array, adjlist: list[list], destination: int=False):
+def shortestPath_heap(origin: int, 
+                      capacity_array: Union[np.array, sparse.csr_array], 
+                      weight_array: Union[np.array, sparse.csr_array], 
+                      adjlist: list[list], 
+                      destination: int = False, 
+                      sparse_array: bool = True):
     """
     This method finds the shortest path from origin to all other nodes in the network. Uses a binary heap priority que in an attempt to speed up the shortestPath function. Uses Dijkstra's algorithm and built in python function heapq.
     
@@ -1808,13 +1822,16 @@ def shortestPath_heap(origin: int, capacity_array: np.array, weight_array: np.ar
     :param origin: origin node
     :type origin: int
     :param capacity_array: node-node array of edge capacities
-    :type capacity_array: np.array
+    :type capacity_array: np.array or sparse.csr_array
     :param weight_array: node-node array of edge weights (i.e., travel times)
-    :type weight_array: np.array
+    :type weight_array: np.array or sparse.csr_array
     :param adjlist: adjacency list of network edges
     :type adjlist: nested list
-    :param destination: if not false, set to destination node, terminates algorithm when shortest path to destination node is found
+    :param destination: if not False, set to destination node, terminates algorithm when shortest path to destination node is found
     :type destination: int
+    :param sparse_array: If True, input arrays are sparse.csr_arrays, if False, input arrays are np.arrays
+    :type sparse_array: bool
+
 
     :returns:
         - **backnodes**, np.array indiciating previous node in shorest path
@@ -1857,7 +1874,11 @@ def shortestPath_heap(origin: int, capacity_array: np.array, weight_array: np.ar
                     pass
                 else:
                     # Step 4a: calculate costlabel temp
-                    l_temp = cost + weight_array[node_i][node_j]
+                    if sparse_array is True:
+                        l_temp = cost + weight_array[node_i, node_j]            
+                    else:
+                        l_temp = cost + weight_array[node_i][node_j]
+
                     # Step 4b: if new path is shorter, update cost and backnode
                     if l_temp < costlabel[node_j]:
                         costlabel[node_j] = l_temp
@@ -1931,7 +1952,58 @@ def pathTo_mod(backnode, costlabel, origin, destination):
     cost=np.asarray(cost)
     return(path, cost)
 
-###### HELPER FUNCTIONS THAT CAN BE REMOVED ######
+# PARALLELIZATION HELPER FUNCTIONS USED IN TRAFFIC ASSIGNMENT
+def SPTT_parallel(n):
+    """
+    Calculate initial feasible flow in parallel. 
+
+    # TODO: Needs to be much better documented, at a later date. 
+    n is array version of OD_matrix where:
+        n[0]: origin
+        n[1]: flow
+        n[2]: destination
+        n[3]: what we should return
+        n[4]: which weight array to use
+
+    n[3] can be either 'cost', 'backnode, 'path', or 'path_cost', or 'path_cost_backnode'
+    n[4] can be either 'weight_array' or 'weight_array_iter'
+
+    """
+    if n[4] == 'weight_array':
+        backnode, costlabel = shortestPath_heap(origin=n[0],
+                                                capacity_array=capacity_array,
+                                                weight_array=weight_array,
+                                                adjlist=adjlist,
+                                                destination=n[2])
+    elif n[4] == 'weight_array_iter':
+        backnode, costlabel = shortestPath_heap(origin=n[0],
+                                                capacity_array=capacity_array,
+                                                weight_array=weight_array_iter,
+                                                adjlist=adjlist,
+                                                destination=n[2])
+
+    if n[3] == 'cost':
+        cost = costlabel[n[2]]
+        return cost
+    
+    elif n[3] == 'backnode':
+        return backnode
+
+    else:
+        path, cost = pathTo_mod(backnode=backnode, 
+                                costlabel=costlabel, 
+                                origin=n[0], 
+                                destination=n[2])
+        if n[3] == 'path':
+            return path
+        if n[3] == 'path_cost':
+            return path, cost 
+        if n[3] == 'path_cost_backnode':
+            return path, cost, backnode
+
+# PARALLELIZATION HELPER FUNCTIONS USED IN TRAFFIC ASSIGNMENT
+
+###### HELPER FUNCTIONS CURRENTLY NOT BEING USED ######
 def maxFlow(source, sink, numnodes, capacity_array, weight_array):
     """
     This method finds a maximum flow in the network.  Return a tuple
@@ -1954,7 +2026,8 @@ def maxFlow(source, sink, numnodes, capacity_array, weight_array):
 
     # Step 2: identify unidriected path pi connecting s and t
     # this is my modified search method (see method for specifics)
-    reachable, backnode = mod_search(source=source, flow=flow, numnodes=numnodes, capacity_array=capacity_array)
+    reachable, backnode = mod_search(
+        source=source, flow=flow, numnodes=numnodes, capacity_array=capacity_array)
     # Based on criteria in mod_search, if sink is in reachable,
     #   than an augmented path exists
     while sink in reachable:
@@ -2011,8 +2084,8 @@ def maxFlow(source, sink, numnodes, capacity_array, weight_array):
     return (totalFlow, flow)
 
 def mod_search(source, flow, numnodes, capacity_array):
-# creates a list of reachable nodes from source based on augmenting path rules
-# a reachable node is either forward or reverse ([i][j] or [j][i] and capacity greater than flow)
+    # creates a list of reachable nodes from source based on augmenting path rules
+    # a reachable node is either forward or reverse ([i][j] or [j][i] and capacity greater than flow)
     reachable = [source]
     backnode = [-1]*numnodes
     SEL = [source]
@@ -2028,50 +2101,7 @@ def mod_search(source, flow, numnodes, capacity_array):
                 SEL.append(j)
                 backnode[j] = i
     return reachable, backnode
-###### HELPER FUNCTIOSN THAT CAN BE REMOVED ######
-
-# PARALLELIZATION HELPER FUNCTIONS USED IN TRAFFIC ASSIGNMENT
-def initial_feasible_flow_parallel(n):
-    """
-    Calculate initial feasible flow in parallel. 
-
-    # TODO: Needs to be much better documented, at a later date. Not sure how to properly add inputs to this function
-    n is array version of OD_matrix where:
-        n[0]: origin
-        n[1]: flow
-        n[2]: destination
-
-    """
-    backnode, costlabel = shortestPath_heap(origin=n[0], 
-                                                capacity_array=capacity_array, 
-                                                weight_array=weight_array, 
-                                                adjlist=adjlist, 
-                                                destination=n[2])
-
-    path, cost = pathTo_mod(backnode=backnode, 
-                            costlabel=costlabel, 
-                            origin=n[0], 
-                            destination=n[2])
-    return path
-    
-def SPTT_parallel(n):
-    """ 
-    Is this just a repeat of initial_feasible_flow_parallel?
-
-    # TODO: Need to check if this can be removed
-    
-    """
-    backnode, costlabel = shortestPath_heap(origin=n[0], 
-                                            capacity_array=capacity_array, 
-                                            weight_array=weight_array_iter,
-                                            adjlist=adjlist, 
-                                            destination=n[2])
-    path, cost = pathTo_mod(backnode=backnode, 
-                                costlabel=costlabel, 
-                                origin=n[0], 
-                                destination=n[2])
-    return (path, cost)
-# PARALLELIZATION HELPER FUNCTIONS USED IN TRAFFIC ASSIGNMENT
+###### HELPER FUNCTIONS CURRENTLY NOT BEING USED ######
 
 
 
@@ -2085,9 +2115,10 @@ def traffic_assignment(G: nx.Graph,
                         method: str = 'CFW',
                         link_performance: str = 'BPR',
                         termination_criteria: list[str, int] = ['iter',0],
-                        dest_method: str = 'single'):
+                        dest_method: str = 'single',
+                        sparse_array: bool = True):
     """
-    Solves the static traffic assignment problem based using algorithms and termination criteria from user inputs.
+    Solves the static traffic assignment problem using algorithms and termination criteria from user inputs.
 
     Taking in a network of roads, shapefile of residential points, and shapefile of destination points, all residential parcels are snapped to the nearest intesection and routed to the nearest destination (also snapped to nearest intersection). Each link has a theoretical capacity (G_capacity argument) and free flow travel time (G_weight argument) associated with it that are used as inputs into the link performance function (link_performance argument). Currently, only one link performance function is available, the user equilibrium BPR function (Bureau of Public Roads function). Other functions will be added in the future.
 
@@ -2129,8 +2160,10 @@ def traffic_assignment(G: nx.Graph,
     :type link_performance: string
     :param termination_criteria: The criteria type and comparision number to stop iterations. Available criteria include AEC, iters, and RG
     :type termination_criteria: list, first element string and second element number
-    :param dest_method: either 'single' or 'multiple' determines snapping methodology for destination parcels, either single nearest node or multiple nearest nodes
+    :param dest_method: either 'single' or 'multiple' determines snapping methodology for destination parcels, either nearest node or multiple nearest nodes
     :type dest_method: string
+    :param sparse_array: If True, uses sparse.csr_array in calculations, if False, use np.array in calculations
+    :type sparse_array: bool
     :returns:
         - **G_output**, nx.Multigraph of road network with traffic assignment flow attribute, 'TA_Flow'
         - **AEC_list**, list of average access cost, AEC, values for each iteration
@@ -2147,31 +2180,40 @@ def traffic_assignment(G: nx.Graph,
     #         - Akcelik function
     #         - Conical delay model
 
+
+    # commonly used variables and their meaning:
+        # weight_array:                     free flow time 
+        # weight_array_iter (or _iter):     weight array for that specific itteration
+        # OD_matrix:                        
+
+
+
     # Convert graph to digraph format
     G = nx.DiGraph(G)
 
+    # TODO: remove this deepcopy?
+    # G=copy.deepcopy(G)
+
     # Remove all edges with 0 capacity
-    G=copy.deepcopy(G)
     no_cap_edges = list(filter(lambda e: e[2] == 0, (e for e in G.edges.data(G_capacity))))
     no_cap_ids = list(e[:2] for e in no_cap_edges)
     G.remove_edges_from(no_cap_ids)
 
-    # Travel times must be whole numbers -  round values if not whole numbers
+    # Travel times must be whole numbers -  round values up to nearest whole number
     for x in G.edges:
-        G.edges[x][G_weight] = round(G.edges[x][G_weight])
+        G.edges[x][G_weight] = math.ceil(G.edges[x][G_weight])
 
-    # Set variables that will be used as constants throughout algorithm 
+    # Set variables that will be used as constants throughout algorithm - set keeping int32 byte criteria in mind
     super_sink = 99999999
     super_origin = 0
-    # Meets int32 byte criteria
     artificial_weight = 999999999
+    artificial_weight_min=1
     artificial_capacity = 999999999
 
-    # Set BPR alpha and beta constants
-    nx.set_edge_attributes(G, values=0.15, name='alpha')
-    nx.set_edge_attributes(G, values=4, name='beta')
-
     # original node list - used to relate flow back to graph representation
+    #TODO: Potential Bug: this is only og_node_list if nodes are renamed, which is done a few lines down
+    # SEE ALSO: where I create node_list a few lines down, if nodes are renamed, this ends up being the same exact variable
+    #   Can we remove or at least reduce repetition?
     og_node_list = [num for num in range(0,len(G.nodes))]
 
     # PREPROCESSING STEPS: 
@@ -2190,23 +2232,28 @@ def traffic_assignment(G: nx.Graph,
 
         # b_1. Add an artifical 0 node to maintain other nodes positions
         #   Doesn't actually need attributes since not connected, but filling for continuity sake
-        G.add_node(super_origin, **{G_weight: artificial_weight, G_capacity: 0})
+        G.add_node(super_origin, **{G_weight: artificial_weight, G_capacity: artificial_capacity})
 
         # b_2. Add artifical edge from each destination node to the artifical sink with zero cost and maximum capacity
         # This is to allow minimum cost routing to whatever resource - destination of OD pair can change based on cost
         for idx, sink in enumerate(unique_dest_nodes):
-            G.add_edge(sink, super_sink, **{G_weight:0, G_capacity:artificial_capacity})
-
+            G.add_edge(sink, super_sink, **
+                       {G_weight: artificial_weight_min, G_capacity: artificial_capacity})
+    
         # c. Create OD_matrix and add artifical edge from each origin to super_sink with extreme weight and capacity to capture loss of service 
         #    2 reasons to add origin->super_sink edge: 
         #   (1): Can build in elastic demand cost if people are priced out of accessign resource, or can set to arbitrarily high value to
         #   (2): By having artifical route, can always send max flow w/o considering if accessible - if path goes through artifical link, than no access when cost is arbitrarily high
         OD_matrix = np.empty([len(unique_origin_nodes),3])
-        for idx,x in enumerate(unique_origin_nodes):
-            OD_matrix[idx][0] = x                            # origin nodes
-            OD_matrix[idx][1] = G.nodes[x]['demand']*-1      # flow associated with the origin node
-            OD_matrix[idx][2] = len(G.nodes())-1             # destination node (when nodes reordered for numpy array, it has a value of length-1 (b/c of artifical origin 0 ))
-            G.add_edge(x, super_sink, **{G_weight: artificial_weight, G_capacity: artificial_capacity})
+        for idx, x in enumerate(unique_origin_nodes):
+            OD_matrix[idx][0] = x                        # origin nodes
+            OD_matrix[idx][1] = G.nodes[x]['demand']*-1  # flow associated with the origin node
+            OD_matrix[idx][2] = len(G.nodes())-1         # destination node (when nodes reordered, it has a value of length-1 (b/c of artifical origin 0 ))
+
+            # need to add edges from each origin to super_sink with extreme weight and capacity to acpture loss of service
+            # HOWEVER, issue arrises if shared origin-destination, therefore not adding this artifical edge of x is also in unique_dest_nodes
+            if x not in unique_dest_nodes:
+                G.add_edge(x, super_sink, **{G_weight: artificial_weight, G_capacity: artificial_capacity})
 
         # d. Sort nodes in proper order
         #   This should in theory then preserve saying node '2' in array is node '2' in network g, especially with adding the artifical node, 0
@@ -2221,7 +2268,7 @@ def traffic_assignment(G: nx.Graph,
 
         # b_1. Add an artifical 0 node to maintain other nodes positions
         #   Doesn't actually need attributes since not connected, but filling for continuity sake
-        G.add_node(super_origin, **{G_weight: artificial_weight, G_capacity: 0})
+        G.add_node(super_origin, **{G_weight: artificial_weight, G_capacity: artificial_capacity})
 
         # b_2. Add artifical edges from vertices around destinations to aggregate points than to artifical sink with 0 cost and max capacity
         # This is to allow minimum cost routing to whatever resource - destination of OD pair which can change based on cost
@@ -2241,15 +2288,14 @@ def traffic_assignment(G: nx.Graph,
 
                 # add links from nearest intersections to parcel centroid
                 for nearest_intersection in unique_dest_nodes_list[idx]:
-                    kwargs = {G_weight: 0, G_capacity: artificial_capacity}
+                    kwargs = {G_weight: artificial_weight_min, G_capacity: artificial_capacity}
                     G.add_edge(nearest_intersection, dest_node_ids, **kwargs)
 
                 # add link from parcel centroid to super sink
                 # TODO2: This is where I can specifically add capacities for each specific grocery store
                 # FOR NOW: just setting capacity to a high amount 
-                kwargs = {G_weight: 0, G_capacity: artificial_capacity}
+                kwargs = {G_weight: artificial_weight_min, G_capacity: artificial_capacity}
                 G.add_edge(dest_node_ids, super_sink, **kwargs)
-
         
         # c. Create OD_matrix and add artifical edge from each origin to super_sink with extreme weight and capacity to capture loss of service 
         #    2 reasons to add origin->super_sink edge: 
@@ -2263,15 +2309,18 @@ def traffic_assignment(G: nx.Graph,
             if nx.has_path(G, x, super_sink) is False:
                 pass
             else:
-                OD_matrix[idx][0] = x                            # origin nodes
-                OD_matrix[idx][1] = G.nodes[x]['demand']*-1      # flow associated with the origin node
-                OD_matrix[idx][2] = len(G.nodes())-1             # destination node (when nodes reordered for numpy array, it has a value of length-1 (b/c of artifical origin 0 ))
-                G.add_edge(x, super_sink, **{G_weight: artificial_weight, G_capacity: artificial_capacity})
+                OD_matrix[idx][0] = x                        # origin nodes
+                OD_matrix[idx][1] = G.nodes[x]['demand']*-1  # flow associated with the origin node
+                OD_matrix[idx][2] = len(G.nodes())-1         # destination node, when nodes reordered, it has a value of length-1 (b/c of artifical origin 0 ))
+                
+                # need to add edges from each origin to super_sink with extreme weight and capacity to acpture loss of service
+                # HOWEVER, issue arrises if shared origin-destination, therefore not adding this artifical edge of x is also in inque_dest_nodes
+                if x not in shared_nodes:
+                    G.add_edge(x, super_sink, **{G_weight: artificial_weight, G_capacity: artificial_capacity})
 
         # delete OD_matrix rows that we no longer need
         indexList = np.where(~OD_matrix.any(axis=1))[0]
         OD_matrix = np.delete(OD_matrix, indexList, axis=0)
-
 
         # d. Sort nodes in proper order
         #   This should in theory then preserve saying node '2' in array is node '2' in network g, especially with adding the artifical node, 0
@@ -2279,141 +2328,201 @@ def traffic_assignment(G: nx.Graph,
         G = nx.convert_node_labels_to_integers(G, 0, ordering="sorted", label_attribute='old_label')
         nodes_in_order = sorted(G.nodes())
 
+    
     # set global variables for parallel processing
     global capacity_array
     global weight_array
     global adjlist
     global weight_array_iter
-    print('making arrays')
-    # convert to capacity and weight arrays
-    capacity_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight=G_capacity, nonedge=-1, dtype=np.int32)    # array of theoretical link capacities
-    weight_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight=G_weight, nonedge=-1, dtype=np.int32)        # array of free flow weights (costs)
-    #alpha_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='alpha', nonedge=-1) 
-    #beta_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='beta', nonedge=-1)
-    print('arrays made')
 
-    # #TODO - needs to be implmeneted ASAP    
-    # # convert arrays to sparse arrays to see if that reduces memory usage
-    # weight_array_s = sparse.coo_array(weight_array)
-    # capacity_array_s = sparse.csr_array(capacity_array)
-    # print(f'weight_array bytes: {weight_array.nbytes}, {weight_array_s.data.nbytes}')
-    # print(f'capacity_array bytes: {capacity_array.nbytes}, {capacity_array_s.data.nbytes}')
-
-
-    # TODO: Check the timing on this -> I believe if I actually used a full array (above) instead of constant (below) the compute time would be significantly longer
+   
+    # convert capacities and weights to numpy arrays
+    if sparse_array is True:
+        capacity_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight=G_capacity, nonedge=0, dtype=np.float64)    
+        weight_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight=G_weight, nonedge=0, dtype=np.float64)
+        # create adjacency list - faster for some functions to use this instead of matrix
+        adjlist = defaultdict(list)
+        row, col = np.where(capacity_array != 0)
+        for i in range(len(row)):
+            adjlist[row[i]].append(col[i])
+    else:
+        capacity_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight=G_capacity, nonedge=-1, dtype=np.float64)    
+        weight_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight=G_weight, nonedge=-1, dtype=np.float64)
+        # create adjacency list - faster for some functions to use this instead of matrix
+        adjlist = defaultdict(list)
+        row, col = np.where(capacity_array!=-1)
+        for i in range(len(row)):
+            adjlist[row[i]].append(col[i])        
+    
+    # Set BPR alpha and beta constants
+        # Currently not using array values for this - too time consuming
+    # nx.set_edge_attributes(G, values=0.15, name='alpha')
+    # nx.set_edge_attributes(G, values=4, name='beta')
+    # alpha_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='alpha', nonedge=-1) 
+    # beta_array = nx.to_numpy_array(G, nodelist=nodes_in_order, weight='beta', nonedge=-1)
     alpha_array = 0.15
     beta_array = 4
-    # create adjacency list - faster for some functions to use this instead of matrix
-    adjlist = defaultdict(list)
-    row, col = np.where(capacity_array!=-1)
-    for i in range(len(row)):
-        adjlist[row[i]].append(col[i])
-    
+
+    # array to create empty copies later on
+    copy_array = np.zeros_like(capacity_array, dtype=np.float64)
+
+    if sparse_array is True:    
+        # convert weight and capacity arrays to sparse arrays in list-of-list format
+        weight_array = sparse.lil_array(weight_array, dtype=np.float64)
+        capacity_array = sparse.lil_array(capacity_array, dtype=np.float64)
+
     # set variables
     sum_d = positive_demand                             # sum of the demand
-    num_nodes = weight_array.shape[0]                   # number of noads
+    num_nodes = capacity_array.shape[0]                  # number of nodes
     node_list = [num for num in range(0, num_nodes)]    # list of all nodes
-    ##################################################################################################################################
+    pp=8                                                # set parallel processing variables
+    
+    ####################################################################################################################
 
-    # WRITE FUNCTIONS FOR CALCULATING BPR FUNCTIONS FOR WEIGHT ARRAY AND WEIGHT ARRAY DERIVATIVE
-    # weight_array variable should remain the free flow time array
-        # weight_array_itter (or weight_array_iter, need to fix spelling for different algorithms) will be the changing weight array with each iteration
+    # HELPER FUNCTIONS 
+    # link_performance_function and link_performance_derivative require link performance equations
+        # just a note if future link performance functions need to be added
 
-    # LINK PERFORMANCE HELPER FUNCTIONS 
-    # So far, only link_performance_function and link_performance derivative require equation inputs 
-
-    def link_performance_function(capacity_array,flow_array,weight_array,eq=link_performance,alpha_array=0.15,beta_array=4):
-        """ Function returning the weight_array_iter array based on user selected equation
+    def link_performance_function(capacity_array,
+                                  flow_array,
+                                  weight_array,
+                                  eq=link_performance,
+                                  alpha_array=0.15,
+                                  beta_array=4,
+                                  sparse_array=sparse_array):
+        
+        """ 
+        Function returning the weight_array_iter array based on user selected equation
         
         Universival arguments:
-            capacity_array == node-node array of link capacities
-            flow_array     == node-node array of link flows
-            weight_array   == node-node array of free-flow weights (i.e., zero flow travel time)
+            capacity_array == array of link capacities (either node-node np.array or sparse.csr_array)
+            flow_array     == array of link flows (either node-node np.array or sparse.csr_array)
+            weight_array   == array of free-flow weights (i.e., zero flow travel time, either node-node np.array or sparse.csr_array)
+            sparse_array   == Bool, if True, inputs are sparse.csr_array, if False, inputs are np.array
 
         BPR arguments:
-            alpha_array == either node-node array of alpha values for each link OR single value 
-            beta_array  == either node-node array of beta values for each link OR single value     
+            alpha_array == BPR alpha value (currently only single value, potential for node-node array in future)
+            beta_array  == BPR beta value (currently only single value, potential for node-node array in future)
 
         returns: weight_array_iter
         """
-        
+
         if eq=="BPR":
-            weight_array_iter = weight_array*(1+alpha_array*(flow_array/capacity_array)**beta_array)
+            if sparse_array is True:
+                weight_array = sparse.csr_array(weight_array)
+                flow_array = sparse.csr_array(flow_array)
+                capacity_array = sparse.csr_array(capacity_array)
+                weight_array_iter = weight_array*(1+alpha_array*(flow_array/capacity_array)**beta_array)
+                weight_array_iter = sparse.lil_array(weight_array_iter)
+            else:
+                weight_array_iter = weight_array*(1+alpha_array*(flow_array/capacity_array)**beta_array)
         # elif eq == "Davidsons":
             # pass
-        
+
         return weight_array_iter
 
-
-    def link_performance_derivative(capacity_array, flow_array, weight_array, eq=link_performance, alpha_array=0.15, beta_array=4):
-        """ Function returning the derivative array based on user selected equation
+    def link_performance_derivative(capacity_array, 
+                                    flow_array, 
+                                    weight_array, 
+                                    eq=link_performance, 
+                                    alpha_array=0.15, 
+                                    beta_array=4,
+                                    sparse_array=sparse_array):
+        """ 
+        Function returning the derivative array based on user selected equation
         
         Universival arguments:
-            capacity_array == node-node array of link capacities
-            flow_array     == node-node array of link flows
-            weight_array   == node-node array of free-flow weights (i.e., zero flow travel time)
+            capacity_array == array of link capacities (either node-node np.array or sparse.csr_array)
+            flow_array     == array of link flows (either node-node np.array or sparse.csr_array)
+            weight_array   == array of free-flow weights (i.e., zero flow travel time, either node-node np.array or sparse.csr_array)
+            sparse_array   == Bool, if True, inputs are sparse.csr_array, if False, inputs are np.array
 
         BPR arguments:
-            alpha_array == either node-node array of alpha values for each link OR single value 
-            beta_array  == either node-node array of beta values for each link OR single value     
+            alpha_array == BPR alpha value (currently only single value, potential for node-node array in future)
+            beta_array  == BPR beta value (currently only single value, potential for node-node array in future) 
 
         returns: link_performance_derivative
         """
 
         if eq == "BPR":
-            link_performance_derivative = (beta_array*weight_array*alpha_array/capacity_array**beta_array)*flow_array**(beta_array-1)
+            if sparse_array is True:
+                weight_array = sparse.csr_array(weight_array)
+                flow_array = sparse.csr_array(flow_array)
+                capacity_array = sparse.csr_array(capacity_array)
+                link_performance_derivative = (beta_array*weight_array*alpha_array/capacity_array**beta_array)*flow_array**(beta_array-1)
+                link_performance_derivative = sparse.lil_array(link_performance_derivative)
+            else:   
+                link_performance_derivative = (beta_array*weight_array*alpha_array/capacity_array**beta_array)*flow_array**(beta_array-1)
         # elif eq == "Davidsons":
             # pass
 
+        if sparse_array is True:
+            link_performance_derivative = sparse.csr_array(link_performance_derivative, dtype=np.float64)
+        
         return link_performance_derivative
 
-
-    def bisection_zeta(lambda_val, flow_array_star, capacity_array, flow_array, weight_array, eq=link_performance, alpha_array=0.15, beta_array=4):
-        """ Function returning the zeta value when using the bisection link-based method
+    def bisection_zeta(lambda_val, 
+                       flow_array_star, 
+                       capacity_array, 
+                       flow_array, 
+                       weight_array, 
+                       eq=link_performance, 
+                       alpha_array=0.15, 
+                       beta_array=4,
+                       sparse_array=sparse_array):
+        """ 
+        Function returning the zeta value when using the bisection link-based method
         
         Universival arguments:
             lambda_val      == lambda value to shift flow
-            flow_array_star == updated flow array
-            capacity_array  == node-node array of link capacities
-            flow_array      == node-node array of link flows
-            weight_array    == node-node array of free-flow weights (i.e., zero flow travel time)
+            flow_array_star == array of updated link flows (i.e., zero flow travel time, either node-node np.array or sparse.csr_array)
+            capacity_array  == array of link capacities (either node-node np.array or sparse.csr_array)
+            flow_array      == array of link flows (either node-node np.array or sparse.csr_array)
+            weight_array    == array of free-flow weights (i.e., zero flow travel time, either node-node np.array or sparse.csr_array)
+            sparse_array    == Bool, if True, inputs are sparse.csr_array, if False, inputs are np.array
 
         BPR arguments:
-            alpha_array == either node-node array of alpha values for each link OR single value 
-            beta_array  == either node-node array of beta values for each link OR single value     
+            alpha_array == BPR alpha value (currently only single value, potential for node-node array in future)
+            beta_array  == BPR beta value (currently only single value, potential for node-node array in future)     
 
         returns: bisection zeta value
         """
-        print('calc x hat')
         x_hat = lambda_val*flow_array_star+(1-lambda_val)*flow_array
         
-        print('calc x hat link performance')
         x_hat_link_performance = link_performance_function(capacity_array=capacity_array, 
                                                            flow_array=x_hat,
                                                            weight_array=weight_array,
                                                             eq=eq, 
                                                             alpha_array=alpha_array, 
-                                                            beta_array=beta_array)
-        print('calc zeta')
+                                                            beta_array=beta_array,
+                                                            sparse_array=sparse_array)
 
         zeta = np.sum(x_hat_link_performance*(flow_array_star-flow_array))
 
         return(zeta)
         
-
-    def newton_f(lambda_val, flow_array_star, capacity_array, flow_array, weight_array, eq=link_performance, alpha_array=0.15, beta_array=4):
+    def newton_f(lambda_val, 
+                 flow_array_star, 
+                 capacity_array, 
+                 flow_array, 
+                 weight_array, 
+                 eq=link_performance, 
+                 alpha_array=0.15, 
+                 beta_array=4,
+                 sparse_array=sparse_array):
         """ Function returning the f and f_prime values when using the newton's and CFW link-based methods
         
         Universival arguments:
             lambda_val      == lambda value to shift flow
-            flow_array_star == updated flow array
-            capacity_array  == node-node array of link capacities
-            flow_array      == node-node array of link flows
-            weight_array    == node-node array of free-flow weights (i.e., zero flow travel time)
+            flow_array_star == array of updated link flows (i.e., zero flow travel time, either node-node np.array or sparse.csr_array)
+            capacity_array  == array of link capacities (either node-node np.array or sparse.csr_array)
+            flow_array      == array of link flows (either node-node np.array or sparse.csr_array)
+            weight_array    == array of free-flow weights (i.e., zero flow travel time, either node-node np.array or sparse.csr_array)
+            sparse_array    == Bool, if True, inputs are sparse.csr_array, if False, inputs are np.array
 
         BPR arguments:
-            alpha_array == either node-node array of alpha values for each link OR single value 
-            beta_array  == either node-node array of beta values for each link OR single value     
+            alpha_array == BPR alpha value (currently only single value, potential for node-node array in future)
+            beta_array  == BPR beta value (currently only single value, potential for node-node array in future)     
 
         returns: f and f_prime
         """
@@ -2424,34 +2533,44 @@ def traffic_assignment(G: nx.Graph,
                                                            weight_array=weight_array,
                                                            eq=eq,
                                                            alpha_array=alpha_array,
-                                                           beta_array=beta_array)
+                                                           beta_array=beta_array,
+                                                           sparse_array=sparse_array)
 
         x_hat_link_performance_derivative = link_performance_derivative(capacity_array=capacity_array, 
                                                                         flow_array=x_hat,
                                                                         weight_array=weight_array, 
                                                                         eq=eq, 
                                                                         alpha_array=alpha_array, 
-                                                                        beta_array=beta_array)
+                                                                        beta_array=beta_array,
+                                                                        sparse_array=sparse_array)
 
         f = np.sum(x_hat_link_performance*(flow_array_star-flow_array))
         f_prime = np.sum(x_hat_link_performance_derivative*(flow_array_star-flow_array)**2)
 
         return f, f_prime
 
-
-    def cfw_alpha(flow_array_star_old, flow_array_star, capacity_array, flow_array, weight_array, eq=link_performance, alpha_array=0.15, beta_array=4):
+    def cfw_alpha(flow_array_star_old, 
+                  flow_array_star, 
+                  capacity_array, 
+                  flow_array, 
+                  weight_array, 
+                  eq=link_performance, 
+                  alpha_array=0.15, 
+                  beta_array=4,
+                  sparse_array=sparse_array):
         """ Function returning the numerator and denominator of alpha value for CFW link-based method
 
         Universival arguments:
-            flow_array_star_old == previous updated flow array
-            flow_array_star     == updated flow array (the AON, or All-Or-Nothing assignment)
-            capacity_array      == node-node array of link capacities
-            flow_array          == node-node array of link flows
-            weight_array        == node-node array of free-flow weights (i.e., zero flow travel time)
+            flow_array_star_old == ARRAY OF previously updated flow array (either node-node np.array or sparse.csr_array)
+            flow_array_star     == array of updated link flows (i.e., zero flow travel time, either node-node np.array or sparse.csr_array)
+            capacity_array      == array of link capacities (either node-node np.array or sparse.csr_array)
+            flow_array          == array of link flows (either node-node np.array or sparse.csr_array)
+            weight_array        == array of free-flow weights (i.e., zero flow travel time, either node-node np.array or sparse.csr_array)
+            sparse_array        == Bool, if True, inputs are sparse.csr_array, if False, inputs are np.array
 
         BPR arguments:
-            alpha_array == either node-node array of alpha values for each link OR single value 
-            beta_array  == either node-node array of beta values for each link OR single value     
+            alpha_array == BPR alpha value (currently only single value, potential for node-node array in future)
+            beta_array  == BPR beta value (currently only single value, potential for node-node array in future)       
 
         returns: f and f_prime
         """
@@ -2461,7 +2580,8 @@ def traffic_assignment(G: nx.Graph,
                                             weight_array=weight_array, 
                                             eq=eq, 
                                             alpha_array=alpha_array, 
-                                            beta_array=beta_array)
+                                            beta_array=beta_array,
+                                            sparse_array=sparse_array)
 
         #eq (6.3) in boyles textbook page 176
         item1 = flow_array_star_old - flow_array
@@ -2473,14 +2593,24 @@ def traffic_assignment(G: nx.Graph,
         den = np.sum(deriv*item1*item3)
         return num, den
 
-
-    def topo_order_function(bush, origin, weight_array, num_nodes = num_nodes, node_list=node_list):
-        """Function to calculate topographic order on a bush."""
+    def topo_order_function(bush, 
+                            origin, 
+                            weight_array, 
+                            num_nodes = num_nodes, 
+                            node_list=node_list,
+                            sparse_array=sparse_array):
+        """
+        Function that calculates topographic order on a bush.
+        """
 
         # Find shortest path from origin to all locations - need to determine what nodes are unreachable 
-        # BUG: check if shortestpath_heap actually works here
-        #backnode, costlabel = shortestPath(origin, bush, weight_array)
-        backnode, costlabel = shortestPath_heap(origin, capacity_array, weight_array, adjlist)
+        backnode, costlabel = shortestPath_heap(origin=origin, 
+                                                capacity_array=capacity_array, 
+                                                weight_array=weight_array, 
+                                                adjlist=adjlist,
+                                                destination=False,
+                                                sparse_array=sparse_array)
+
         # where backnode == -1, unreachable, and won't be considered in topological ordering 
         unreachable = [i for i,j in enumerate(backnode) if j == -1]
         unreachable.pop(unreachable.index(origin))
@@ -2490,13 +2620,17 @@ def traffic_assignment(G: nx.Graph,
         for val in unreachable:
             visited[val]=True
         
-        # create adjacency table
+        # create adjacency table of bush array
         adj_table = {}
         for node in node_list:
             if visited[node] is True:
                 pass
             else:
-                adj_table[node] = [i for i, j in enumerate(bush[node]) if j > 0]
+                if sparse_array is True:
+                    adj_table[node]=[i for i, j in enumerate(bush.A[[node], :][0]) if j > 0]
+                else:
+                    adj_table[node] = [i for i, j in enumerate(bush[node]) if j > 0]
+
         # conduct topological ordering from the origin node
         topo_order = []
 
@@ -2517,12 +2651,13 @@ def traffic_assignment(G: nx.Graph,
             if visited[node] is False:
                 topo_sort_utils(node, visited, topo_order)
 
-        #topo_order.append(origin)
         topo_order = topo_order[::-1]
         return topo_order
 
-
-    def termination_function(termination_criteria, iters, AEC, RG):
+    def termination_function(termination_criteria, 
+                             iters, 
+                             AEC, 
+                             RG):
         """Function to determine if algorithm loop should continue or not.
         The input terminatio_criteria is a list with a string and numerical value. Once numerical value is reached, the loop should stop.
         """
@@ -2541,7 +2676,7 @@ def traffic_assignment(G: nx.Graph,
 
         return val
 
-
+    ########################################################################################################################
     # ALGORITHMS
     if algorithm == "link_based":
 
@@ -2550,14 +2685,14 @@ def traffic_assignment(G: nx.Graph,
         # b.    Create initial feasible flow array with all-or-nothing minimum cost flow assignment (free flow travel cost)
 
         # a. Create empty flow array 
-        flow_array = np.zeros_like(capacity_array)
+        flow_array = np.zeros_like(copy_array)
 
         # BEGIN ORIGINAL NON PARALLEL VERSION 
         # b. Create initial feasible flow array
         # for x in OD_matrix:
-        #     origin = np.int(x[0])
+        #     origin = int(x[0])
         #     flow = x[1]
-        #     destination = np.int(x[2])
+        #     destination = int(x[2])
         #     # calculate shortest path from an origin to all other locations
         #     #backnode, costlabel = shortestPath(origin=origin, capacity_array=capacity_array, weight_array=weight_array)
         #     backnode, costlabel = shortestPath_heap(origin=origin, capacity_array=capacity_array, weight_array=weight_array, adjlist=adjlist, destination=destination)
@@ -2569,15 +2704,15 @@ def traffic_assignment(G: nx.Graph,
         #         flow_array[i[0]][i[1]] += flow
         # END ORIGINAL NON PARALLEL VERSION
   
+
         # BEGIN PARALLEL PROCESSING
-        # set parallel processing variables
-        print('starting first parallel')
-        pp=8
-        n = [[np.int(OD_matrix[n][0]), OD_matrix[n][1], np.int(OD_matrix[n][2])] for n in range(0, len(OD_matrix))]
+        # n = [origin, flow, destination, what to return, which weight array to use]
+        # I think OD_matrix can be reformated to start in this format, and we can therefore save time 
+        n = [[int(OD_matrix[n][0]), OD_matrix[n][1], int(OD_matrix[n][2]), 'path', 'weight_array'] for n in range(0, len(OD_matrix))]
         # initialize the pool
         pool=Poolm(pp)
         # map function
-        results = pool.map(initial_feasible_flow_parallel, n)
+        results = pool.map(SPTT_parallel, n)
         # close the pool
         pool.close()
         pool.join()
@@ -2586,9 +2721,11 @@ def traffic_assignment(G: nx.Graph,
             for i in result:
                 flow_array[i[0]][i[1]] += OD_matrix[idx][1]     
         # END PARALLEL PROCESSING 
-        print('finished first parallel')
         
-        
+        # convert flow_array to sparse_array if necessary
+        if sparse_array is True:
+            flow_array = sparse.lil_array(flow_array)
+
         # LINK BASED ALGORITHM: Within loop:
         # 1.    Recalculate weight_array (travel cost times) using BPR function and initial flow_array
         # 2.    Create empty kappa array to hold OD shortest path costs, and empty flow_array_star to hold new flows
@@ -2611,24 +2748,29 @@ def traffic_assignment(G: nx.Graph,
         iter_val = True
         # begin loop
         while iter_val is True:
-            print(f'Begin iteration: {iter}')
             # 1. recalculate weight_array
             weight_array_iter = link_performance_function(capacity_array=capacity_array,
-                                                            flow_array=flow_array,
+                                                          flow_array=flow_array,
                                                           weight_array=weight_array,
-                                                            eq=link_performance,
-                                                            alpha_array=alpha_array,
-                                                          beta_array=beta_array)
+                                                          eq=link_performance,
+                                                          alpha_array=alpha_array,
+                                                          beta_array=beta_array,
+                                                          sparse_array=sparse_array)
+
             # 2. Create empty kappa array and flow_array_star
-            # TODO: I DON'T THINK KAPPA IS ACTUALLY USED-> I DON'T THINK KAPPA IS NEEDED??????? 
+            # TODO: I DON'T THINK KAPPA IS ACTUALLY USED
             kappa = np.zeros([1, np.shape(OD_matrix)[0]])
-            flow_array_star = np.zeros_like(capacity_array)
+            if sparse_array is True:
+                flow_array_star = sparse.lil_array(capacity_array.shape)
+            else:
+                flow_array_star = np.zeros_like(capacity_array)
             # For shortest path travel time calculation (termination criteria)
-            SPTT=0      
+            SPTT=0    
+
             # #BEGIN ORIGINAL CALC
             # for idx, x in enumerate(OD_matrix):
-            #     origin = np.int(x[0])
-            #     destination = np.int(x[2])
+            #     origin = int(x[0])
+            #     destination = int(x[2])
             #     flow = x[1]
             #     # 3. Calculate shortest paths
             #     backnode, costlabel = shortestPath_heap(origin=origin, 
@@ -2644,33 +2786,36 @@ def traffic_assignment(G: nx.Graph,
             #     kappa[0][idx]=cost      
             #     # For shortest path travel time calculation (termination criteria)
             #     SPTT += cost*flow
-                # 5. Update the flow array
-                # for i in path:
-                #     flow_array_star[i[0]][i[1]] += flow
+            #     # 5. Update the flow array
+            #     for i in path:
+            #         flow_array_star[i[0]][i[1]] += flow
             # END ORIGINAL CALC
-            print(f'start iteration {iter} parallel process')
+           
             # BEGIN PARALLEL CALC
-            n = [[np.int(OD_matrix[n][0]), OD_matrix[n][1], np.int(OD_matrix[n][2])] for n in range(0, len(OD_matrix))]
+            # n = [origin, flow, destination, what to return, which weight array to use]
+            n = [[int(OD_matrix[n][0]), OD_matrix[n][1], int(OD_matrix[n][2]), 'path_cost', 'weight_array_iter'] for n in range(0, len(OD_matrix))]
             pool=Poolm(pp)
             results = pool.map(SPTT_parallel, n)
             for idx, result in enumerate(results):
                 path, cost = result
                 flow = OD_matrix[idx][1]
                 SPTT += cost*flow
-                for i in path:
-                    flow_array_star[i[0]][i[1]] += flow
+                if sparse_array is True:
+                    for i in path:
+                        flow_array_star[i[0], i[1]] += flow
+                else:
+                    for i in path:
+                        flow_array_star[i[0]][i[1]] += flow
             pool.close()
             pool.join()
             # END PARALLEL CALC
-            print(f'finish iteration {iter} parallel process')
+
             # Calculate termination variables
             TSTT = np.sum(np.multiply(flow_array, weight_array_iter))
             AEC = (TSTT-SPTT)/sum_d
             RG = TSTT/SPTT - 1
-            
-            print(f'calc lambda')
-            # 6. Calculate Lambda using the method given 
-            
+
+            # 6. Calculate Lambda using the method given            
             if method == 'MSA':
                 # MSA
                 lambda_val = 1/(iter+2)
@@ -2690,7 +2835,7 @@ def traffic_assignment(G: nx.Graph,
                     # Calculate x_hat, and subsequently zeta
                     zeta = bisection_zeta(lambda_val = lambda_val, 
                                             flow_array_star=flow_array_star, 
-                                             capacity_array=capacity_array, 
+                                            capacity_array=capacity_array, 
                                             flow_array=flow_array,
                                             weight_array=weight_array,
                                             eq=link_performance, 
@@ -2716,22 +2861,28 @@ def traffic_assignment(G: nx.Graph,
                 # x_hat = lambda_val*flow_array_star + (1-lambda_val)*flow_array
                 # calculate f and f_prime
                 f, f_prime = newton_f(lambda_val=lambda_val, 
-                                        flow_array_star=flow_array_star, 
-                                        capacity_array=capacity_array, 
-                                        flow_array=flow_array, 
-                                        weight_array=weight_array, 
-                                        eq=link_performance, 
-                                        alpha_array=alpha_array, 
-                                      beta_array=beta_array)
+                                      flow_array_star=flow_array_star, 
+                                      capacity_array=capacity_array, 
+                                      flow_array=flow_array, 
+                                      weight_array=weight_array, 
+                                      eq=link_performance, 
+                                      alpha_array=alpha_array, 
+                                      beta_array=beta_array,
+                                      sparse_array=sparse_array)
 
 
                 # Update Lambda
+                #TODO: see PPT, add criteria about hitting the same endpoint twice in a row to terminate
                 lambda_val -= f/f_prime
+                # maximum lambda_value -> shift all flow
                 if lambda_val > 1:
                     lambda_val = 1
-                elif lambda_val <0:
+                # minimum lambda_value -> shift none of the flow
+                elif lambda_val < 0:
                     lambda_val = 0
-                #TODO: see PPT, add criteria about hitting the same endpoint twice in a row to terminate
+                # if f_prime is 0 -> shift none of the flow
+                else:
+                    lambda_val=0
 
             elif method == 'CFW':
                 # Frank-wolfe: Conjugate Frank-Wolfe
@@ -2748,8 +2899,8 @@ def traffic_assignment(G: nx.Graph,
                                             weight_array=weight_array, 
                                             eq=link_performance, 
                                             alpha_array=alpha_array, 
-                                            beta_array=beta_array)
-
+                                            beta_array=beta_array,
+                                            sparse_array=sparse_array)
                     if den == 0:
                         alpha=0
                     else:
@@ -2758,7 +2909,10 @@ def traffic_assignment(G: nx.Graph,
                             alpha = 1 - epsilon
                         if alpha < 0:
                             alpha = 0
-                    flow_array_star = alpha*flow_array_star_old+(1-alpha)*flow_array_star
+                    if sparse_array is True:
+                        flow_array_star = sparse.lil_array(flow_array_star_old.multiply(alpha) + flow_array_star.multiply(1-alpha))
+                    else:
+                        flow_array_star = alpha*flow_array_star_old+(1-alpha)*flow_array_star
 
                 # Calculate Lambda using new flow_array_star estimation utilizing Newton's Method
                 # initialize lambda - just going to choose 0.5
@@ -2771,23 +2925,34 @@ def traffic_assignment(G: nx.Graph,
                                         weight_array=weight_array,
                                         eq=link_performance, 
                                         alpha_array=alpha_array, 
-                                        beta_array=beta_array)
-
+                                        beta_array=beta_array,
+                                        sparse_array=sparse_array)
+                
                 # Update Lambda
                 lambda_val -= f/f_prime
+                # maximum lambda_value -> shift all flow
                 if lambda_val > 1:
                     lambda_val = 1
+                # minimum lambda_value -> shift none of the flow
                 elif lambda_val < 0:
                     lambda_val = 0
+                # if f_prime is 0 -> shift none of the flow
+                else:
+                    lambda_val=0
 
                 # flow_array_star_old value for the next iteration
-                flow_array_star_old = np.copy(flow_array_star)
+                if sparse_array is True:
+                    flow_array_star_old = sparse.lil_array.copy(flow_array_star)
+                else:
+                    flow_array_star_old = np.copy(flow_array_star)
                 # set marker to pass for subsequent interations
                 CFW_marker = 1
 
-            print(f'shift flows')
             # 7. Shift flows
-            flow_array = lambda_val*flow_array_star + (1-lambda_val)*flow_array
+            if sparse_array is True:
+                flow_array = sparse.lil_array(flow_array_star.multiply(lambda_val) + flow_array.multiply(1-lambda_val))
+            else:
+                flow_array = lambda_val*flow_array_star + (1-lambda_val)*flow_array 
 
             # Fill termination variable lists
             AEC_list.append(AEC)
@@ -2796,7 +2961,6 @@ def traffic_assignment(G: nx.Graph,
             RG_list.append(RG)
             iter += 1
 
-            print(f'termination criteria')
             # determine if iterations should continue
             iter_val = termination_function(termination_criteria = termination_criteria, 
                                             iters = iter, 
@@ -2813,36 +2977,66 @@ def traffic_assignment(G: nx.Graph,
         RG_list = []
 
         # Initialize the flow and weight arrays
-        flow_array = np.zeros_like(capacity_array)
-
+        if sparse_array is True:
+            flow_array = sparse.lil_array(np.shape(copy_array))
+        else:
+            flow_array = np.zeros_like(copy_array)
         # Initialize nested list to store OD path information 
-        paths_array = []
-
-        # populate paths_array matrix
-        for OD_pair in OD_matrix:
             # The paths_array matrix is set up as follows:
-                # paths_array[x][0]: [O, D]
-                # paths_array[x][1]: [list of arrays that are paths for OD-pair]
-                # paths_array[x][2]: [list of flows (associated with paths)]
-            
-            origin = OD_pair[0].astype(int)
-            flow = OD_pair[1]
-            destination = OD_pair[2].astype(int)
-            # Calculate shortest path for OD pair
-            backnode, costlabel = shortestPath_heap(origin=origin, 
-                                                    capacity_array=capacity_array, 
-                                                    weight_array=weight_array, 
-                                                    adjlist=adjlist)
-            path, cost = pathTo_mod(backnode=backnode, 
-                                        costlabel=costlabel, 
-                                        origin=origin, 
-                                        destination=destination)
-            
-            # update the flow array in order to update the weight array
-            for i in path:
-                flow_array[i[0]][i[1]]+=flow
+            # paths_array[x][0]: [O, D]
+            # paths_array[x][1]: [list of arrays that are paths for OD-pair]
+            # paths_array[x][2]: [list of flows (associated with paths)]
+        paths_array = []
+        
+        # populate paths_array matrix
+        # BEGIN PARALLEL PROCESS
+        # n = [origin, flow, destination, what to return, which weight array to use]
+        n = [[int(OD_matrix[n][0]), OD_matrix[n][1], int(OD_matrix[n][2]), 'path', 'weight_array'] for n in range(0, len(OD_matrix))]
+        pool=Poolm(pp)
+        results = pool.map(SPTT_parallel, n)
+        for idx, result in enumerate(results):
+            path = result
+            flow = OD_matrix[idx][1]
+            origin = OD_matrix[idx][0].astype(int)
+            destination = OD_matrix[idx][2].astype(int)
+            if sparse_array is True:
+                for i in path:
+                    flow_array[i[0], i[1]] += flow
+            else:
+                for i in path:
+                    flow_array[i[0]][i[1]] += flow
             # append the paths_array
             paths_array.append([[origin,destination],[path],[flow]])
+        pool.close()
+        pool.join()
+        # END PARALLEL PROCESS
+        
+        # # BEGIN UNPARALLELED PROCESS
+        # for OD_pair in OD_matrix:
+        #     origin = OD_pair[0].astype(int)
+        #     flow = OD_pair[1]
+        #     destination = OD_pair[2].astype(int)
+        #     # Calculate shortest path for OD pair
+        #     backnode, costlabel = shortestPath_heap(origin=origin, 
+        #                                             capacity_array=capacity_array, 
+        #                                             weight_array=weight_array, 
+        #                                             adjlist=adjlist,
+        #                                             sparse_array=sparse_array)
+        #     path, cost = pathTo_mod(backnode=backnode, 
+        #                                 costlabel=costlabel, 
+        #                                 origin=origin, 
+        #                                 destination=destination)
+
+        #     # update the flow array in order to update the weight array
+        #     for i in path:
+        #         if sparse_array is True:
+        #             flow_array[i[0],i[1]]+=flow
+        #         else:
+        #             flow_array[i[0]][i[1]]+=flow
+        #     # append the paths_array
+        #     paths_array.append([[origin,destination],[path],[flow]])
+        # # END UNPARALLED PROCESS
+
 
         # create and update the weight_array for this itteration
         weight_array_iter = link_performance_function(capacity_array=capacity_array,
@@ -2850,23 +3044,41 @@ def traffic_assignment(G: nx.Graph,
                                                         weight_array=weight_array,
                                                         eq=link_performance,
                                                         alpha_array=alpha_array,
-                                                        beta_array=beta_array)
-
+                                                        beta_array=beta_array,
+                                                        sparse_array=sparse_array)
+        
         # calculate initial termination criteria variables
-        SPTT = 0
-        for idx, x in enumerate(OD_matrix):
-            origin = np.int(x[0])
-            destination = np.int(x[2])
-            flow = x[1]
-            # Calculate shortest paths
-            backnode, costlabel = shortestPath_heap(origin=origin, 
-                                                    capacity_array=capacity_array, 
-                                                    weight_array=weight_array_iter, 
-                                                    adjlist=adjlist)
-            # don't actually need shortest path, just need the cost of the path
-            cost = costlabel[destination]
-            # For shortest path travel time (SPTT) calculation 
+        SPTT=0
+        # BEGIN PARALLEL PROCESS
+        # n = [origin, flow, destination, what to return, which weight array to use]
+        n = [[int(OD_matrix[n][0]), OD_matrix[n][1], int(OD_matrix[n][2]), 'cost', 'weight_array_iter'] for n in range(0, len(OD_matrix))]
+        pool=Poolm(pp)
+        results = pool.map(SPTT_parallel, n)
+        for idx, result in enumerate(results):
+            cost = result
+            flow = OD_matrix[idx][1]
             SPTT += cost*flow
+        pool.close()
+        pool.join()
+        # END PARALLEL PROCESS
+        
+        # # BEGIN UNPARALLELED PROCESS
+        # SPTT = 0
+        # for idx, x in enumerate(OD_matrix):
+        #     origin = int(x[0])
+        #     destination = int(x[2])
+        #     flow = x[1]
+        #     # Calculate shortest paths
+        #     backnode, costlabel = shortestPath_heap(origin=origin, 
+        #                                             capacity_array=capacity_array, 
+        #                                             weight_array=weight_array_iter, 
+        #                                             adjlist=adjlist,
+        #                                             sparse_array=sparse_array)
+        #     # don't actually need shortest path, just need the cost of the path
+        #     cost = costlabel[destination]
+        #     # For shortest path travel time (SPTT) calculation 
+        #     SPTT += cost*flow
+        # # END UNPARALLELED PROCESS
 
         # termination criteria
         TSTT = np.sum(np.multiply(flow_array, weight_array_iter))
@@ -2884,21 +3096,39 @@ def traffic_assignment(G: nx.Graph,
         iter_val = True
         # begin loop
         while iter_val is True:
+            # BEGIN PARALLELED PROCESS
+            # n = [origin, flow, destination, what to return, which weight array to use]
+            n = [[int(OD_matrix[n][0]), OD_matrix[n][1], int(OD_matrix[n][2]), 'path_cost', 'weight_array_iter'] for n in range(0, len(OD_matrix))]
+            pool=Poolm(pp)
+            results = pool.map(SPTT_parallel, n)
+            pool.close()
+            pool.join()
+            for idx, result in enumerate(results):
+                path_hat, cost_hat = result
+                origin = paths_array[idx][0][0]
+                destination = paths_array[idx][0][1]
+                paths = paths_array[idx][1]
+                flows = paths_array[idx][2]
+            # END PARALLELED PROCESS
+            
+            # # BEGIN UNPARALLELED PROCESS
+            # for OD_pair in paths_array:
+            #     origin = OD_pair[0][0]
+            #     destination = OD_pair[0][1]
+            #     paths = OD_pair[1]
+            #     flows = OD_pair[2]
+            #     # # Find the new shortest path 
+            #     backnode, costlabel = shortestPath_heap(origin=origin, 
+            #                                             capacity_array=capacity_array, 
+            #                                             weight_array=weight_array_iter, 
+            #                                             adjlist=adjlist,
+            #                                             sparse_array=sparse_array)
+            #     path_hat, cost_hat = pathTo_mod(backnode=backnode, 
+            #                                     costlabel=costlabel, 
+            #                                     origin=origin, 
+            #                                     destination=destination)
+            # #END UNPARALLELED PROCESS
 
-            for OD_pair in paths_array:
-                origin = OD_pair[0][0]
-                destination = OD_pair[0][1]
-                paths = OD_pair[1]
-                flows = OD_pair[2]
-                # # Find the new shortest path 
-                backnode, costlabel = shortestPath_heap(origin=origin, 
-                                                        capacity_array=capacity_array, 
-                                                        weight_array=weight_array_iter, 
-                                                        adjlist=adjlist)
-                path_hat, cost_hat = pathTo_mod(backnode=backnode, 
-                                                costlabel=costlabel, 
-                                                origin=origin, 
-                                                destination=destination)
                 # if path already in, don't append, just move it, and associated information to the end
                 if path_hat in paths:
                     index = paths.index(path_hat)
@@ -2916,9 +3146,12 @@ def traffic_assignment(G: nx.Graph,
                     # Determine unique_links between shortest path (path_hat) and current path under investigation
                     all_links = [item for sublst in zip(path, path_hat) for item in sublst]
                     unique_links = unique_links = [list(x) for x in set(tuple(x) for x in all_links)]
-
+                    
                     # calculate numerator of delta_h
-                    cost = sum([weight_array_iter[x[0]][x[1]] for x in path])
+                    if sparse_array is True:
+                        cost = sum([weight_array_iter[x[0],x[1]] for x in path])
+                    else:
+                        cost = sum([weight_array_iter[x[0]][x[1]] for x in path])
                     num = cost-cost_hat
 
                     # determine the sum of derivatives (denominator of delta_h equation)
@@ -2928,25 +3161,34 @@ def traffic_assignment(G: nx.Graph,
                                                                 weight_array=weight_array,
                                                                 eq=link_performance, 
                                                                 alpha_array=alpha_array, 
-                                                                beta_array=beta_array)
+                                                                beta_array=beta_array,
+                                                                sparse_array=sparse_array)
 
-                    den=sum([derivative[x[0]][x[1]] for x in unique_links])
+                    if sparse_array is True:
+                        den=sum([derivative[x[0],x[1]] for x in unique_links])
+                    else:
+                        den=sum([derivative[x[0]][x[1]] for x in unique_links])
 
                     # calculate delta_h
                     delta_h = num/den
-
                     # adjusted path flow value
                     adj = min(flows[idx], delta_h)
 
                     # update paths_array flow values
+                    # BUG FIX THIS IMMEDIETLY
                     flows[idx] -= adj
                     flows[-1] += adj
-
                     # for the path under examination and path_hat, need to update flow array to calc new weight array
-                    for i in path:
-                        flow_array[i[0]][i[1]] -= adj
-                    for i in path_hat:
-                        flow_array[i[0]][i[1]] += adj
+                    if sparse_array is True:
+                        for i in path:
+                            flow_array[i[0],i[1]] -= adj
+                        for i in path_hat:
+                            flow_array[i[0],i[1]] += adj
+                    else:
+                        for i in path:
+                            flow_array[i[0]][i[1]] -= adj
+                        for i in path_hat:
+                            flow_array[i[0]][i[1]] += adj
 
                     # Recalculate weight_array for next itteration
                     weight_array_iter = link_performance_function(capacity_array=capacity_array,
@@ -2954,7 +3196,8 @@ def traffic_assignment(G: nx.Graph,
                                                                     weight_array=weight_array,
                                                                     eq=link_performance,
                                                                     alpha_array=alpha_array,
-                                                                    beta_array=beta_array)
+                                                                    beta_array=beta_array,
+                                                                    sparse_array=sparse_array)
  
                 # TODO: eliminate paths where flow is 0 -> could incorporate this into loop above 
                 marker=0
@@ -2965,21 +3208,36 @@ def traffic_assignment(G: nx.Graph,
                     else:
                         marker+=1    
 
-            # calculate  termination criteria variables
-            SPTT = 0
-            for idx, x in enumerate(OD_matrix):
-                origin = np.int(x[0])
-                destination = np.int(x[2])
-                flow = x[1]
-                # # Calculate shortest paths
-                backnode, costlabel = shortestPath_heap(origin=origin, 
-                                                        capacity_array=capacity_array, 
-                                                        weight_array=weight_array_iter, 
-                                                        adjlist=adjlist)
-                # don't actually need shortest path, just need the cost of the path
-                cost = costlabel[destination]
-                # For shortest path travel time calculation (termination criteria)
+            # BEGIN NEW SPTT PARALLEL CALC
+            # For shortest path travel time calculation (termination criteria)
+            SPTT=0  
+            # BEGIN PARALLEL CALC
+            n = [[int(OD_matrix[n][0]), OD_matrix[n][1], int(OD_matrix[n][2]), 'cost', 'weight_array_iter'] for n in range(0, len(OD_matrix))]
+            pool=Poolm(pp)
+            results = pool.map(SPTT_parallel, n)
+            for idx, cost in enumerate(results):
+                flow = OD_matrix[idx][1]
                 SPTT += cost*flow
+            pool.close()
+            pool.join()
+            # END NEW SPTT PARALLEL CALC
+
+            # # calculate  termination criteria variables
+            # SPTT = 0
+            # for idx, x in enumerate(OD_matrix):
+            #     origin = int(x[0])
+            #     destination = int(x[2])
+            #     flow = x[1]
+            #     # # Calculate shortest paths
+            #     backnode, costlabel = shortestPath_heap(origin=origin, 
+            #                                             capacity_array=capacity_array, 
+            #                                             weight_array=weight_array_iter, 
+            #                                             adjlist=adjlist,
+            #                                             sparse_array=sparse_array)
+            #     # don't actually need shortest path, just need the cost of the path
+            #     cost = costlabel[destination]
+            #     # For shortest path travel time calculation (termination criteria)
+            #     SPTT += cost*flow
 
             TSTT = np.sum(np.multiply(flow_array, weight_array_iter))
             AEC = (TSTT-SPTT)/sum_d
@@ -3000,9 +3258,7 @@ def traffic_assignment(G: nx.Graph,
 
     elif algorithm == 'bush_based':
         
- 
         # Convert network into a set of bushes for each OD pair
-        #topo_orders = []
         bushes = []
         bush_flows = [] 
 
@@ -3012,16 +3268,77 @@ def traffic_assignment(G: nx.Graph,
         SPTT_list = []
         RG_list = []
 
+        # BUG: Don't know why, but this caused a bug for it to get caught when calclating alternative paths
+        # ended up impacting speed very little, can try again later or just ignore for now
+        # Initizalize bushes for each OD pair
+        # BEGIN PARALLEL
+        # n = [[int(OD_matrix[n][0]), OD_matrix[n][1], int(OD_matrix[n][2]),'path_cost_backnode', 'weight_array'] for n in range(0, len(OD_matrix))]
+        # pool=Poolm(pp)
+        # results = pool.map(SPTT_parallel, n)
+        # for idx, result in enumerate(results):
+        #     path = result[0]
+        #     cost = result[1]
+        #     backnode = result[2]
+        #     flow = OD_matrix[idx][1]
+        #     origin = OD_matrix[idx][0].astype(int)
+        #     destination = OD_matrix[idx][2].astype(int)
+
+        #     # Create an empty bush that is the same shape as weight_array
+        #     if sparse_array is True:
+        #         bush = sparse.lil_array(np.shape(copy_array))
+        #     else:
+        #         bush = np.full_like(copy_array, -1)
+
+        #     # add appropriate edges to bush, using a shortest path tree
+        #     for i, j in enumerate(backnode):
+        #         if j ==-1:
+        #             pass
+        #         else:
+        #             # I think J and I are placed properly?
+        #             if sparse_array is True:
+        #                 bush[[j],[i]]=1
+        #             else:
+        #                 bush[j][i]=1
+
+        #     # Set initial flow for each bush equal to flow along shortest path
+        #     # create empty bush flow array
+        #     if sparse_array is True:
+        #         bush_flow = sparse.lil_array(np.shape(copy_array))
+        #     else:
+        #         bush_flow = np.zeros_like(copy_array)
+
+        #     # update the bush flow array
+        #     for i in path:
+        #         if sparse_array is True:
+        #             bush_flow[i[0], i[1]] += flow
+        #         else:
+        #             bush_flow[i[0]][i[1]] += flow
+
+        #     # append the trackers with topo orders and bushes
+        #     bushes.append(bush)
+        #     bush_flows.append(bush_flow)
+
+        # pool.close()
+        # pool.join()
+        # #END PARALLEL
+
+
+        # UNPARALLELIZED BUSHES INITIALIZING
         for pair in OD_matrix:
             origin = pair[0].astype(int) 
             flow = pair[1]
             destination = pair[2].astype(int)
-
-            # Create an empty  bush that is the same shape as weight_array
-            bush = np.full_like(weight_array, -1)
+            # Create an empty bush that is the same shape as weight_array
+            if sparse_array is True:
+                bush = sparse.lil_array(np.shape(copy_array))
+            else:
+                bush = np.full_like(copy_array, -1)
             # Find shortest path from origin to all locations - need to determine what nodes are unreachable 
-            backnode, costlabel = shortestPath(origin, capacity_array, weight_array)
-       
+            backnode, costlabel = shortestPath_heap(origin=origin, 
+                                                    capacity_array=capacity_array, 
+                                                    weight_array=weight_array, 
+                                                    adjlist=adjlist,
+                                                    sparse_array=sparse_array)
             # create alternative to prim's just using the backnode array? not minimum spanning tree but shortest path graph?
             #   TODO: Did i fix this??
             for i, j in enumerate(backnode):
@@ -3029,42 +3346,76 @@ def traffic_assignment(G: nx.Graph,
                     pass
                 else:
                     # I think J and I are placed properly?
-                    bush[j][i]=1
-
-            # Set initial flow for each bush - flow along shortest path
-            bush_flow = np.zeros_like(weight_array)
-            backnode, costlabel = shortestPath(origin, bush, weight_array)
-            path, cost = pathTo(backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
-            # path_mod, cost_mod = pathTo_mod(backnode, costlabel, origin, destination)
-
-            for i in range(len(path)-1):
-                bush_flow[path[i]][path[i+1]] += flow
+                    if sparse_array is True:
+                        bush[[j],[i]]=1
+                    else:
+                        bush[j][i]=1
+            # Set initial flow for each bush equal to flow along shortest path
+            # create empty bush flow array
+            if sparse_array is True:
+                bush_flow = sparse.lil_array(np.shape(copy_array))
+            else:
+                bush_flow = np.zeros_like(copy_array)
+            # determine shortest paths
+            backnode, costlabel = shortestPath_heap(origin=origin,
+                                                    capacity_array=capacity_array,
+                                                    weight_array=weight_array,
+                                                    adjlist=adjlist,
+                                                    sparse_array=sparse_array)
+            # extract path data
+            path, cost = pathTo_mod(backnode=backnode, 
+                                    costlabel=costlabel, 
+                                    origin=origin, 
+                                    destination=destination)
+            # update the bush flow array 
+            for i in path:
+                if sparse_array is True:
+                    bush_flow[i[0], i[1]] += flow
+                else:
+                    bush_flow[i[0]][i[1]] += flow
 
             # append the trackers with topo orders and bushes
             bushes.append(bush)
             bush_flows.append(bush_flow)
+            # UNPARALLELIZED BUSH INITIALIZATION
 
+
+
+
+
+
+
+        # create empty flow array
+        if sparse_array is True:
+            flow_array = sparse.lil_array(np.shape(copy_array))
+        else:
+            flow_array = np.zeros_like(copy_array, dtype=np.float64)
+        
         # sum flow on bushes for initial network flow
-        flow_array = np.zeros_like(weight_array)
         for bush in bush_flows:
             flow_array += bush
 
-        # have to replace the negative flows in flow_array with 0s
-        flow_array[flow_array<0]=0
+        if sparse_array is False:
+            # have to replace the negative flows in flow_array with 0s, only applicable in numpy calcautions
+            flow_array[flow_array<0]=0
 
         # # calculate initial network travel times
-        weight_array_itter = link_performance_function(capacity_array=capacity_array,
+        weight_array_iter = link_performance_function(capacity_array=capacity_array,
                                                         flow_array=flow_array,
                                                         weight_array=weight_array,
                                                         eq=link_performance,
                                                         alpha_array=alpha_array,
-                                                        beta_array=beta_array)
+                                                        beta_array=beta_array,
+                                                        sparse_array=sparse_array)
 
-        def label_function(topo_order, bush, weight_array_itter):
-            '''function to calculate all of the L and U labels for algorithm B'''
+
+        def label_function(topo_order, bush, weight_array_iter):
+            '''
+            function to calculate all of the L and U labels for algorithm B
+            '''
             # Set L and U variables
-            L_link = np.full_like(weight_array_itter, np.inf)
-            U_link = np.full_like(weight_array_itter, -np.inf)
+            L_link = np.full_like(weight_array_iter, np.inf)
+            U_link = np.full_like(weight_array_iter, -np.inf)
             L_node = np.full(len(topo_order), np.inf)
             U_node = np.full(len(topo_order), -np.inf)
             # L and U at r (origin) are equal to 0
@@ -3081,8 +3432,8 @@ def traffic_assignment(G: nx.Graph,
                 if id == 0:
                     for j in topo_order:
                         if bush[i][j] == 1:
-                            L_link[i][j] = weight_array_itter[i][j]
-                            U_link[i][j] = weight_array_itter[i][j]
+                            L_link[i][j] = weight_array_iter[i][j]
+                            U_link[i][j] = weight_array_iter[i][j]
 
                 # for last in topological order
                 elif id == len(topo_order)-1:
@@ -3107,8 +3458,8 @@ def traffic_assignment(G: nx.Graph,
                     if l_val == np.inf:
                         for j in topo_order[id:]: 
                             if bush[i][j] == 1:
-                                L_link[i][j] = weight_array_itter[i][j]
-                                U_link[i][j] = weight_array_itter[i][j]
+                                L_link[i][j] = weight_array_iter[i][j]
+                                U_link[i][j] = weight_array_iter[i][j]
                         L_node[id] = 0
                         U_node[id] = 0
 
@@ -3117,8 +3468,8 @@ def traffic_assignment(G: nx.Graph,
                         U_node[id] = u_val
                         for j in topo_order[id:]:
                             if bush[i][j] == 1:
-                                L_link[i][j] = min(L_link[i][j], L_node[id]+weight_array_itter[i][j])
-                                U_link[i][j] = max(U_link[i][j], U_node[id]+weight_array_itter[i][j])
+                                L_link[i][j] = min(L_link[i][j], L_node[id]+weight_array_iter[i][j])
+                                U_link[i][j] = max(U_link[i][j], U_node[id]+weight_array_iter[i][j])
 
                 id += 1
 
@@ -3128,7 +3479,87 @@ def traffic_assignment(G: nx.Graph,
 
             return L_node, U_node, L_link, U_link
 
+        def label_function_sparse(topo_order, bush, weight_array_iter):
+            '''
+            function to calculate all of the L and U labels for algorithm B using sparse arrays
+            '''
 
+            # Set L and U variables
+            infs = [np.inf]*sparse.lil_array(weight_array_iter)
+            neginfs=[-np.inf]*sparse.lil_array(weight_array_iter)
+            L_link = sparse.lil_array(infs)
+            U_link = sparse.lil_array(neginfs)
+            
+            L_node = np.full(len(topo_order), np.inf)
+            U_node = np.full(len(topo_order), -np.inf)
+            # L and U at r (origin) are equal to 0
+            L_node[0] = 0
+            U_node[0] = 0
+
+            # determine L and U labels in forward topological ordering
+            id = 0
+            
+            for id, i in enumerate(topo_order):
+                # i == topo_order node & id == index
+                # for first in topological order
+                if id == 0:
+                    for j in topo_order:
+                        if bush[i,j] == 1:
+                            L_link[i,j] = weight_array_iter[i,j]
+                            U_link[i,j] = weight_array_iter[i,j]
+
+                # for last in topological order
+                elif id == len(topo_order)-1:
+                    l_val = L_node[id]
+                    u_val = U_node[id]
+                    for h in topo_order:
+                        if bush[h,i] == 1:
+                            l_val = min(l_val, L_link[h,i])
+                            u_val = max(u_val, U_link[h,i])
+                    L_node[id] = l_val
+                    U_node[id] = u_val
+
+                # for all others
+                else:
+                    l_val = L_node[id]
+                    u_val = U_node[id]
+                    for h in topo_order[:id+1]:
+                        if bush[h,i] == 1:
+                            l_val = min(l_val, L_link[h,i])
+                            u_val = max(u_val, U_link[h,i])
+
+                    if l_val == np.inf:
+                        for j in topo_order[id:]:
+                            if bush[i,j] == 1:
+                                L_link[i,j] = weight_array_iter[i,j]
+                                U_link[i,j] = weight_array_iter[i,j]
+                        L_node[id] = 0
+                        U_node[id] = 0
+                    
+                    else:
+                        L_node[id] = l_val
+                        U_node[id] = u_val
+                        for j in topo_order[id:]:
+                            if bush[i,j] == 1:
+                                L_link[i,j] = min(L_link[i,j], L_node[id]+weight_array_iter[i,j])
+                                U_link[i,j] = max(U_link[i,j], U_node[id]+weight_array_iter[i,j])
+            
+            # removes infs from U_link and L_link for clarity
+            U_link = sparse.csr_array(U_link)
+            U_link.data = np.nan_to_num(U_link.data, posinf=0,neginf=0, copy=False)
+            U_link.eliminate_zeros()
+            U_link = sparse.lil_array(U_link)
+
+            L_link = sparse.csr_array(L_link)
+            L_link.data = np.nan_to_num(
+                L_link.data, posinf=0, neginf=0, copy=False)
+            L_link.eliminate_zeros()
+            L_link = sparse.lil_array(L_link)
+
+
+
+            return L_node, U_node, L_link, U_link
+        
         # Begin the loops of, for each bush,:
             # 1. find if shortcuts exist (i.e., find new shortest path from O-D, if it uses links not on bush, add them)
                 # 1a. find shortest path
@@ -3143,187 +3574,360 @@ def traffic_assignment(G: nx.Graph,
         iter_val = True
         # begin loop
         while iter_val is True:
-
-            #print('#######################################################################################')
+            
             for idx, bush in enumerate(bushes):
                 print(idx)
+                start=time.time()
                 # set variables
                 origin = OD_matrix[idx][0].astype(int)
                 flow = OD_matrix[idx][1]
                 destination = OD_matrix[idx][2].astype(int)
                 bush_flow = bush_flows[idx]
-
                 # Calculate initial L and U Labels
                 # conduct topological ordering from the origin node
-                topo_order = topo_order_function(bush, origin=origin, weight_array=weight_array_itter, num_nodes=num_nodes, node_list=node_list)
-
+                topo_order = topo_order_function(bush, 
+                                                 origin=origin, 
+                                                 weight_array=weight_array_iter, 
+                                                 num_nodes=num_nodes, 
+                                                 node_list=node_list,
+                                                 sparse_array=sparse_array)
+                
                 # calculate initial L and U labels
-                L_node, U_node, L_link, U_link = label_function(topo_order, 
-                                                                    bush, 
-                                                                    weight_array_itter)
+                # BUG: I think this can be rewritten ignoring topo-order - just use min and max paths, which should be much quicker to calc
+                if sparse_array is True:
+                    L_node, U_node, L_link, U_link = label_function_sparse(topo_order=topo_order,
+                                                                           bush=bush,
+                                                                           weight_array_iter=weight_array_iter)
+                else:
+                    L_node, U_node, L_link, U_link = label_function(topo_order=topo_order, 
+                                                                    bush=bush, 
+                                                                    weight_array_iter=weight_array_iter)
 
                 # 1. FIND SHORTCUTS AND ADD TO BUSH
-                # I don't like adding every possible shortcut - this doesn't seem efficent to me
-                # BUG : furthermore, I am not positive but I believe this can inadvertently add a loop, thus invalidating the topo_order function later 
-                #       THIS NEEDS TO BE ADDRESSED
-                # from textbook and slides, proper way is to add any link where Ui + tij < Uj # BUG L or U??? POWERPOINT AND BOOK SAY OPPOSITE
-                for i in topo_order:
-                    for j in topo_order:
-                        if (bush[i][j] == -1) and (capacity_array[i][j] > 0):      # doesen't exist in bush but does exist in weight arary (i.e., whole network)
-                            if L_node[topo_order.index(i)] + weight_array_itter[i][j] <= L_node[topo_order.index(j)]:
-                                bush[i][j] = 1
-                                
-   
+                # TODO: I don't like adding every possible shortcut - this doesn't seem efficent to me, might be adding in loops to network: Need to explore more
+                # need to find where link doesn't exist on bush but does exist on weight array
+                # #  Method below speeds up sparse_array shortcut addition by approx. 0.5 seconds per bush iteration 
+                if sparse_array is True:
+                    for i, rows in enumerate(capacity_array.rows):
+                        for j in rows:
+                            if (bush[i, j] == 0): 
+                                try:
+                                    if (L_node[topo_order.index(i)] + weight_array_iter[i, j] <= L_node[topo_order.index(j)]):
+                                        bush[i,j] = 1
+                                except:
+                                    pass
+                # if sparse_array is True:
+                #     for i in topo_order:
+                #         for j in topo_order:
+                #             if (bush[i,j] == 0) and (capacity_array[i,j] > 0):      # doesen't exist in bush but does exist in weight array (i.e., whole network)
+                #                 if L_node[topo_order.index(i)] + weight_array_iter[i,j] <= L_node[topo_order.index(j)]:
+                #                     bush[i,j] = 1             
+                else:
+                    for i in topo_order:
+                        for j in topo_order:
+                            if (bush[i][j] == -1) and (capacity_array[i][j] > 0):      # doesen't exist in bush but does exist in weight arary (i.e., whole network)
+                                if L_node[topo_order.index(i)] + weight_array_iter[i][j] <= L_node[topo_order.index(j)]:
+                                    bush[i][j] = 1
+
+
+
                 # 2. CALCULATE L AND U LABELS IN FORWARD TOPOLOGICAL ORDER WITH NEW SHORTCUTS
                 # conduct topological ordering from the origin node
-                topo_order = topo_order_function(bush, origin=origin, weight_array=weight_array_itter, num_nodes=num_nodes, node_list=node_list)
+                topo_order = topo_order_function(bush, 
+                                                 origin=origin, 
+                                                 weight_array=weight_array_iter, 
+                                                 num_nodes=num_nodes, 
+                                                 node_list=node_list, 
+                                                 sparse_array=sparse_array)
                 # calculate new L and U labels
-                L_node, U_node, L_link, U_link = label_function(topo_order, bush, weight_array_itter)
+                if sparse_array is True:
+                    L_node, U_node, L_link, U_link = label_function_sparse(topo_order=topo_order,
+                                                                           bush=bush,
+                                                                           weight_array_iter=weight_array_iter)
+                else:
+                    L_node, U_node, L_link, U_link = label_function(topo_order=topo_order, 
+                                                                    bush=bush, 
+                                                                    weight_array_iter=weight_array_iter)
 
+                
                 # instead of being interested in last node topoligcally, maybe we are interested in destination node?
                 # BUG: this is helping calculate delta_hs but it really is supposed to be last node topologically from notes
                 topo_order=topo_order[:topo_order.index(num_nodes-1)+1]
 
                 # DIVERGENCE NODE LOOP
                 loop = True
-                while loop is True:
-                    if len(topo_order) == 1:
-                        loop=False
-                    else:
-                        # determine topoligcally last node in the bush
-                        i = topo_order[-1]
-                        
-                        # determine the longest and shortest paths from U and L Labels
-                        # max loop calculation 
-                        # because we plan to subtract flows from max path, if any flow on max path is equal to 0, we can skip this iteration 
-                        max_val_flow = np.inf
-                        max_val = -np.inf
-                        max_path = [i]
-                        for h in topo_order[:topo_order.index(i)+1]:
-                            if bush[h][i] == 1:
-                                if max_val < U_link[h][i]:
-                                    max_val = U_link[h][i]
-                                    next_node_max = h
-                        max_path.append(next_node_max)
-            
-                        # loop for max path
-                        while max_path[-1] != origin:
-                            max_val = -np.inf
-                            for h in topo_order[:topo_order.index(next_node_max)+1]:
-                                if bush[h][next_node_max].astype(int) == 1: 
-                                    if max_val < U_link[h][next_node_max]:
-                                        max_val = U_link[h][next_node_max]
-                                        max_val_flow = min(max_val_flow, bush_flow[h][next_node_max])
-                                        next_node_holder = h
-                            max_path.append(next_node_holder)
-                            next_node_max = next_node_holder
-
-                        # check if max path is feasible, otherwise restart search
-                        if max_val_flow == 0:
-                            topo_order = topo_order[:-1]
+                if sparse_array is True:
+                    while loop is True:
+                        if len(topo_order) == 1:
+                            loop = False
                         else:
-                            
-                            # min loop calculation         
-                            min_val = np.inf
-                            min_path = [i]
-                            for h in topo_order:
-                                if bush[h][i] == 1:
-                                    if min_val > L_link[h][i]:
-                                        min_val = L_link[h][i]
-                                        next_node_min = h
-                            min_path.append(next_node_min)
-                            # loop for min path
-                            while min_path[-1] != origin:
-                                min_val = np.inf
-                                for h in topo_order[:topo_order.index(next_node_min)+1]:
-                                    if bush[h][next_node_min].astype(int) == 1:
-                                        if min_val > L_link[h][next_node_min]:
-                                            min_val = L_link[h][next_node_min]
+                            # determine topoligcally last node in the bush
+                            i = topo_order[-1]
+
+                            # determine the longest and shortest paths from U and L Labels
+                            # max loop calculation
+                            # because we plan to subtract flows from max path, if any flow on max path is equal to 0, we can skip this iteration
+                            max_val_flow = np.inf
+                            max_val = -np.inf
+                            max_path = [i]
+                            for h in topo_order[:topo_order.index(i)+1]:
+                                if bush[h,i] == 1:
+                                    if max_val < U_link[h,i]:
+                                        max_val = U_link[h,i]
+                                        next_node_max = h
+                            max_path.append(next_node_max)
+
+                            # loop for max path
+                            while max_path[-1] != origin:
+                                max_val = -np.inf
+                                for h in topo_order[:topo_order.index(next_node_max)+1]:
+                                    if bush[h,next_node_max].astype(int) == 1:
+                                        if max_val < U_link[h,next_node_max]:
+                                            max_val = U_link[h,next_node_max]
+                                            max_val_flow = min(max_val_flow, bush_flow[h,next_node_max])
                                             next_node_holder = h
-                                min_path.append(next_node_holder)
-                                next_node_min = next_node_holder
-                        
-                            backnode, costlabel = shortestPath(origin, bush, weight_array_itter)
-                            path_mod, cost_mod = pathTo_mod(backnode, costlabel, origin, destination)
+                                max_path.append(next_node_holder)
+                                next_node_max = next_node_holder
 
-                            # reverse order of lists for better comprehension
-                            min_path = min_path[::-1]
-                            max_path = max_path[::-1]
-
-
-                            # if max and min path are the same, there is only one path and therefore we do not need to shift flow
-                            if min_path == max_path:
-                                loop=False
-
-                            # determine divergence node "a" from min and max paths
-                            # Divergence node is the last node common to both
-                            else:
-                                for val in min_path[-2::-1]:
-                                    if val in max_path[-2::-1]:
-                                        a = val
-                                        break
-
-                                # TODO: I don't know if this below alteration of i and a is valid or fixing the negative delta h problem
-                                # need to determine if set of a to i only has a single path: if so, a and I need to shift back common nodes
-                                separation = min_path.index(i) - min_path.index(a) 
-                                while separation == 1:
-                                    i = copy.deepcopy(a)
-                                    new_index_min = min_path.index(a)-1
-                                    new_index_max = max_path.index(a)-1
-                                    for val in min_path[new_index_min::-1]:
-                                        if val in max_path[new_index_max::-1]:
-                                            a=val
-                                    separation = min_path.index(i) - min_path.index(a)
-
-                                # extract sigma_l and sigma_u, the list of links from a to i
-                                sigma_U = max_path[max_path.index(a):(max_path.index(i)+1)]
-                                sigma_L = min_path[min_path.index(a):(min_path.index(i)+1)]
-                                
-                                # calculate delta h, equation 6.61 in the textbook
-                                num1 = U_node[topo_order.index(i)] - U_node[topo_order.index(a)]
-                                num2 = L_node[topo_order.index(i)] - L_node[topo_order.index(a)]
-                                numerator = num1-num2
-                                #numerator = (U_node[topo_order.index(i)] - U_node[topo_order.index(a)]) - (L_node[topo_order.index(i)] - L_node[topo_order.index(a)])
-
-                                # BPR function derivative
-                                derivative_array = link_performance_derivative(capacity_array=capacity_array, 
-                                                                                flow_array=flow_array, 
-                                                                                weight_array=weight_array, 
-                                                                                eq=link_performance, 
-                                                                                alpha_array=alpha_array, 
-                                                                                beta_array=beta_array)
-
-                                denominator = 0
-                                for id in range(len(sigma_L)-1):
-                                    denominator += derivative_array[sigma_L[id]][sigma_L[id+1]]
-                                for id in range(len(sigma_U)-1):
-                                    denominator += derivative_array[sigma_U[id]][sigma_U[id+1]]
-
-                                # set delta_h value
-                                delta_h = numerator/denominator
-
-                                # determine delta_h based on maximum flow that can be shifted 
-                                for id in range(len(sigma_U)-1):
-                                    if delta_h <= bush_flow[sigma_U[id]][sigma_U[id+1]]:
-                                        pass
-                                    else:
-                                        delta_h = bush_flow[sigma_U[id]][sigma_U[id+1]]
-                                
-                                # Shift flows
-                                for id in range(len(sigma_L)-1):
-                                    flow_array[sigma_L[id]][sigma_L[id+1]] += delta_h
-                                    bush_flow[sigma_L[id]][sigma_L[id+1]] += delta_h
-                                for id in range(len(sigma_U)-1):
-                                    flow_array[sigma_U[id]][sigma_U[id+1]] -= delta_h
-                                    bush_flow[sigma_U[id]][sigma_U[id+1]] -= delta_h
-
-                                # at end of loop, slice off last value and repeat
+                            # check if max path is feasible, otherwise restart search
+                            if max_val_flow == 0:
                                 topo_order = topo_order[:-1]
-                    
+                            else:
+
+                                # min loop calculation
+                                min_val = np.inf
+                                min_path = [i]
+                                for h in topo_order:
+                                    if bush[h,i] == 1:
+                                        if min_val > L_link[h,i]:
+                                            min_val = L_link[h,i]
+                                            next_node_min = h
+                                min_path.append(next_node_min)
+                                # loop for min path
+                                while min_path[-1] != origin:
+                                    min_val = np.inf
+                                    for h in topo_order[:topo_order.index(next_node_min)+1]:
+                                        if bush[h,next_node_min].astype(int) == 1:
+                                            if min_val > L_link[h,next_node_min]:
+                                                min_val = L_link[h,next_node_min]
+                                                next_node_holder = h
+                                    min_path.append(next_node_holder)
+                                    next_node_min = next_node_holder
+
+                                # reverse order of lists for better comprehension
+                                min_path = min_path[::-1]
+                                max_path = max_path[::-1]
+
+                                # if max and min path are the same, there is only one path and therefore we do not need to shift flow
+                                if min_path == max_path:
+                                    loop = False
+
+                                # determine divergence node "a" from min and max paths
+                                # Divergence node is the last node common to both
+                                else:
+                                    for val in min_path[-2::-1]:
+                                        if val in max_path[-2::-1]:
+                                            a = val
+                                            break
+
+                                    # TODO: I don't know if this below alteration of i and a is valid or fixing the negative delta h problem
+                                    # need to determine if set of a to i only has a single path: if so, a and I need to shift back common nodes
+                                    separation = min_path.index(i) - min_path.index(a)
+                                    while separation == 1:
+                                        i = copy.deepcopy(a)
+                                        new_index_min = min_path.index(a)-1
+                                        new_index_max = max_path.index(a)-1
+                                        for val in min_path[new_index_min::-1]:
+                                            if val in max_path[new_index_max::-1]:
+                                                a = val
+                                        separation = min_path.index(i) - min_path.index(a)
+
+                                    # extract sigma_l and sigma_u, the list of links from a to i
+                                    sigma_U = max_path[max_path.index(a):(max_path.index(i)+1)]
+                                    sigma_L = min_path[min_path.index(a):(min_path.index(i)+1)]
+
+                                    # calculate delta h, equation 6.61 in the textbook
+                                    num1 = U_node[topo_order.index(i)] - U_node[topo_order.index(a)]
+                                    num2 = L_node[topo_order.index(i)] - L_node[topo_order.index(a)]
+                                    numerator = num1-num2
+
+                                    # BPR function derivative
+                                    derivative_array = link_performance_derivative(capacity_array=capacity_array,
+                                                                                   flow_array=flow_array,
+                                                                                   weight_array=weight_array,
+                                                                                   eq=link_performance,
+                                                                                   alpha_array=alpha_array,
+                                                                                   beta_array=beta_array,
+                                                                                   sparse_array=sparse_array)
+
+                                    denominator = 0
+                                    for id in range(len(sigma_L)-1):
+                                        denominator += derivative_array[[sigma_L[id]],[sigma_L[id+1]]]
+                                    for id in range(len(sigma_U)-1):
+                                        denominator += derivative_array[[sigma_U[id]],[sigma_U[id+1]]]
+
+                                    # set delta_h value
+                                    delta_h = numerator/denominator
+
+                                    # determine delta_h based on maximum flow that can be shifted
+                                    for id in range(len(sigma_U)-1):
+                                        if delta_h <= bush_flow[sigma_U[id],sigma_U[id+1]]:
+                                            pass
+                                        else:
+                                            delta_h = bush_flow[sigma_U[id],sigma_U[id+1]]
+
+                                    # Shift flows
+                                    for id in range(len(sigma_L)-1):
+                                        flow_array[sigma_L[id],sigma_L[id+1]] += delta_h
+                                        bush_flow[sigma_L[id],sigma_L[id+1]] += delta_h
+                                    for id in range(len(sigma_U)-1):
+                                        flow_array[sigma_U[id],sigma_U[id+1]] -= delta_h
+                                        bush_flow[sigma_U[id],sigma_U[id+1]] -= delta_h
+
+                                    # at end of loop, slice off last value and repeat
+                                    topo_order = topo_order[:-1]
+
+                else:
+                    while loop is True:
+                        if len(topo_order) == 1:
+                            loop=False
+                        else:
+                            # determine topoligcally last node in the bush
+                            i = topo_order[-1]
+                            # determine the longest and shortest paths from U and L Labels
+                            # max loop calculation 
+                            # because we plan to subtract flows from max path, if any flow on max path is equal to 0, we can skip this iteration 
+                            max_val_flow = np.inf
+                            max_val = -np.inf
+                            max_path = [i]
+                            for h in topo_order[:topo_order.index(i)+1]:
+                                if bush[h][i] == 1:
+                                    if max_val < U_link[h][i]:
+                                        max_val = U_link[h][i]
+                                        next_node_max = h
+                            max_path.append(next_node_max)
+                            
+                            # loop for max path
+                            
+                            while max_path[-1] != origin:
+                                max_val = -np.inf
+                                for h in topo_order[:topo_order.index(next_node_max)+1]:
+                                    if bush[h][next_node_max].astype(int) == 1: 
+                                        if max_val < U_link[h][next_node_max]:
+                                            max_val = U_link[h][next_node_max]
+                                            max_val_flow = min(max_val_flow, bush_flow[h][next_node_max])
+                                            next_node_holder = h  
+                                max_path.append(next_node_holder)
+                                next_node_max = next_node_holder
+
+                            # check if max path is feasible, otherwise restart search
+                            if max_val_flow == 0:
+                                topo_order = topo_order[:-1]
+                            else:
+                                # min loop calculation         
+                                min_val = np.inf
+                                min_path = [i]
+                                for h in topo_order:
+                                    if bush[h][i] == 1:
+                                        if min_val > L_link[h][i]:
+                                            min_val = L_link[h][i]
+                                            next_node_min = h
+                                min_path.append(next_node_min)
+                                # loop for min path
+                                while min_path[-1] != origin:
+                                    min_val = np.inf
+                                    for h in topo_order[:topo_order.index(next_node_min)+1]:
+                                        if bush[h][next_node_min].astype(int) == 1:
+                                            if min_val > L_link[h][next_node_min]:
+                                                min_val = L_link[h][next_node_min]
+                                                next_node_holder = h
+                                    min_path.append(next_node_holder)
+                                    next_node_min = next_node_holder
+
+                                # reverse order of lists for better comprehension
+                                min_path = min_path[::-1]
+                                max_path = max_path[::-1]
+
+                                # if max and min path are the same, there is only one path and therefore we do not need to shift flow
+                                if min_path == max_path:
+                                    loop=False
+
+                                # determine divergence node "a" from min and max paths
+                                # Divergence node is the last node common to both
+                                else:
+                                    for val in min_path[-2::-1]:
+                                        if val in max_path[-2::-1]:
+                                            a = val
+                                            break
+
+                                    # TODO: I don't know if this below alteration of i and a is valid or fixing the negative delta h problem
+                                    # need to determine if set of a to i only has a single path: if so, a and I need to shift back common nodes
+                                    separation = min_path.index(i) - min_path.index(a) 
+                                    while separation == 1:
+                                        i = copy.deepcopy(a)
+                                        new_index_min = min_path.index(a)-1
+                                        new_index_max = max_path.index(a)-1
+                                        for val in min_path[new_index_min::-1]:
+                                            if val in max_path[new_index_max::-1]:
+                                                a=val
+                                        separation = min_path.index(i) - min_path.index(a)
+
+                                    # extract sigma_l and sigma_u, the list of links from a to i
+                                    sigma_U = max_path[max_path.index(a):(max_path.index(i)+1)]
+                                    sigma_L = min_path[min_path.index(a):(min_path.index(i)+1)]
+                                    
+                                    # calculate delta h, equation 6.61 in the textbook
+                                    num1 = U_node[topo_order.index(i)] - U_node[topo_order.index(a)]
+                                    num2 = L_node[topo_order.index(i)] - L_node[topo_order.index(a)]
+                                    numerator = num1-num2
+
+                                    # BPR function derivative
+                                    derivative_array = link_performance_derivative(capacity_array=capacity_array, 
+                                                                                    flow_array=flow_array, 
+                                                                                    weight_array=weight_array, 
+                                                                                    eq=link_performance, 
+                                                                                    alpha_array=alpha_array, 
+                                                                                    beta_array=beta_array,
+                                                                                    sparse_array=sparse_array)
+
+                                    denominator = 0
+                                    for id in range(len(sigma_L)-1):
+                                        denominator += derivative_array[sigma_L[id]][sigma_L[id+1]]
+                                    for id in range(len(sigma_U)-1):
+                                        denominator += derivative_array[sigma_U[id]][sigma_U[id+1]]
+
+                                    # set delta_h value
+                                    delta_h = numerator/denominator
+
+                                    # determine delta_h based on maximum flow that can be shifted 
+                                    for id in range(len(sigma_U)-1):
+                                        if delta_h <= bush_flow[sigma_U[id]][sigma_U[id+1]]:
+                                            pass
+                                        else:
+                                            delta_h = bush_flow[sigma_U[id]][sigma_U[id+1]]
+                                    
+                                    # Shift flows
+                                    for id in range(len(sigma_L)-1):
+                                        flow_array[sigma_L[id]][sigma_L[id+1]] += delta_h
+                                        bush_flow[sigma_L[id]][sigma_L[id+1]] += delta_h
+                                    for id in range(len(sigma_U)-1):
+                                        flow_array[sigma_U[id]][sigma_U[id+1]] -= delta_h
+                                        bush_flow[sigma_U[id]][sigma_U[id+1]] -= delta_h
+
+                                    # at end of loop, slice off last value and repeat
+                                    topo_order = topo_order[:-1]
+                        
                 # update the weight array
-                weight_array_itter = link_performance_function(capacity_array,flow_array,weight_array,eq=link_performance,alpha_array=alpha_array,beta_array=beta_array)
-               
-                # TODO Won't work right now but need to figure out how to remove unused eges
+                weight_array_iter = link_performance_function(capacity_array,
+                                                              flow_array,
+                                                              weight_array,
+                                                              eq=link_performance,
+                                                              alpha_array=alpha_array,
+                                                              beta_array=beta_array,
+                                                              sparse_array=sparse_array)
+
+
+                # TODO Won't work right now but need to figure out how to remove unused edges
                 # # Remove edges from bush that have 0 flow while preserving conectivity 
                 # backnode, costlabel = shortestPath(origin, bush, weight_array)
                 # reachable = np.where(backnode != -1)
@@ -3340,23 +3944,32 @@ def traffic_assignment(G: nx.Graph,
                 #                 pass
                 #             else:
                 #                 bush[i][j] = 1
-        
+                end=time.time()
+                print(end-start)
+
             # calculate termination criteria
             SPTT = 0
             for idx, x in enumerate(OD_matrix):
-                origin = np.int(x[0])
-                destination = np.int(x[2])
+                origin = int(x[0])
+                destination = int(x[2])
                 flow = x[1]
                 # Calculate shortest paths
-                backnode, costlabel = shortestPath(
-                    origin=origin, capacity_array=capacity_array, weight_array=weight_array_itter)
-                path, cost = pathTo(
-                    backnode=backnode, costlabel=costlabel, origin=origin, destination=destination)
+                backnode, costlabel = shortestPath_heap(origin=origin,
+                                                       capacity_array=capacity_array,
+                                                       weight_array=weight_array_iter,
+                                                       adjlist=adjlist,
+                                                       destination=False,
+                                                       sparse_array=sparse_array)
+
+                # don't actually need shortest path, just need the cost of the path
+                cost = costlabel[destination]
+                
                 # For shortest path travel time calculation (termination criteria)
                 SPTT += cost*flow
 
+            print(SPTT)
             # termination criteria
-            TSTT = np.sum(np.multiply(flow_array, weight_array_itter))
+            TSTT = np.sum(np.multiply(flow_array, weight_array_iter))
             AEC = (TSTT-SPTT)/sum_d
             RG = TSTT/SPTT - 1
 
@@ -3373,20 +3986,36 @@ def traffic_assignment(G: nx.Graph,
                                             AEC=AEC,
                                             RG=RG)
 
-
+    ########################################################################################################################
+    
     # EDIT THE FINAL OUTPUTS
+    # Graph edge attributes that are added:
+        # 'Weight_Array_Iter':  The new travel time given final flow solution
+        # TA_flow':             Final flow on that edge
+
+    # Set the background Weight_Array_Iter value to travel_time and update accordingly
     nx.set_edge_attributes(G, nx.get_edge_attributes(G, 'travel_time'), name='Weight_Array_Iter')
+    
     # relate flow array back to network
-    new_data= {}
-    for i in og_node_list:
-        for j in og_node_list:
-            if flow_array[i][j] > 0:
-                new_data.update({(i, j): {'TA_Flow': flow_array[i][j], 'Weight_Array_Iter': weight_array_iter[i][j]}})
+    if sparse_array is True:
+        new_data= {}
+        for i in og_node_list:
+            for j in og_node_list:
+                if flow_array[i,j] > 0:
+                    new_data.update({(i, j): {'TA_Flow': flow_array[i,j], 'Weight_Array_Iter': weight_array_iter[i,j]}})
+                else:new_data.update({(i, j): {'TA_Flow': 0}})
+    else:
+        new_data= {}
+        for i in og_node_list:
+            for j in og_node_list:
+                if flow_array[i][j] > 0:
+                    new_data.update({(i, j): {'TA_Flow': flow_array[i][j], 'Weight_Array_Iter': weight_array_iter[i][j]}})
+                else:new_data.update({(i, j): {'TA_Flow': 0}})
 
     # set edge attributes with new data
     nx.set_edge_attributes(G, new_data)
 
-    # remove artificial super source and sink
+    # remove artificial super source and super sink
     G.remove_node(len(G.nodes())-1)
     G.remove_node(super_origin)
 
@@ -3394,17 +4023,20 @@ def traffic_assignment(G: nx.Graph,
     if dest_method == 'multiple':
         while len(list(G.nodes)) > len(og_node_list):
             G.remove_node(len(G.nodes()))
+    
     #TODO:  has to be multidigraph to save properly should adjust save function to represent this requirement
     G_output = nx.MultiDiGraph(G)
 
-    # #TODO: Fix outputs - either add save option or remove and keep as seperate function - in scratch. This function should return the graph
+    #TODO: Fix outputs - either add save option or remove and keep as seperate function - in scratch. This function should return the graph
     save_2_disk(G=G_output, path='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Graphs',
                 name='AN_Graph_Traffic_Assignment_No_Inundation')
 
-    # delete global variables 
+    # delete global variables created for parallel processing
     del capacity_array
     del weight_array
     del adjlist
     del weight_array_iter
+
+
 
     return G_output, AEC_list, TSTT_list, SPTT_list, RG_list, iter
