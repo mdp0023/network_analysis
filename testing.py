@@ -13,6 +13,7 @@ import numpy as np
 import random
 import pandas as pd
 import rasterio
+import time
 pd.set_option('display.max_rows', None)
 
 # CAPUTRE THE SHAPELY DEPRECIAITION WARNINGS
@@ -29,6 +30,7 @@ ox.config(use_cache=True)
 f_path = '/home/mdp0023/Desktop/external/Data/Network_Data/AOI_Testing'
 f_boundaries = f'{f_path}/AOI_Boundary'
 f_food_shp = f'{f_path}/AOI_Food_Mart_Shapefiles'
+f_other_shp = f'{f_path}/AOI_Other_Resource_Shapefiles'
 f_graphs = f'{f_path}/AOI_Graphs'
 f_parcel_access_shp = f'{f_path}/AOI_Parcel_Access_Shapefiles'
 f_res_shp = f'{f_path}/AOI_Residental_Parcel_Shapefiles'
@@ -38,12 +40,15 @@ f_res_shp = f'{f_path}/AOI_Residental_Parcel_Shapefiles'
 aoi_area = f'{f_boundaries}/Neighborhood_Network_AOI.shp'
 # boundary with buffer
 aoi_buffer = f'{f_boundaries}/Neighborhood_Network_AOI_Buf_1km.shp'
-# Centroids of res parcels and food marts
+# Centroids of res parcels, food marts, and 2nd resource
 res_points_loc = f'{f_res_shp}/Residential_Parcels_Points_Network_AOI.shp'
 food_points_loc = f'{f_food_shp}/Food_Marts_Points_Network_AOI.shp'
-# Shapefiles of res parcels and food marts
+other_points_loc = f'{f_other_shp}/Other_Resource_Points_Network_AOI.shp'
+# Shapefiles of res parcels, food marts, and 2nd resource
 res_parcels = f'{f_res_shp}/Residential_Parcels_Network_AOI.shp'
 food_parcels = f'{f_food_shp}/Food_Marts_Network_AOI.shp'
+other_points_loc = f'{f_other_shp}/Other_Resource_Network_AOI.shp'
+# Inundation raster
 inundation_raster = f'{f_path}/AOI_Inundation.tif'
 # raster = rio.open(inundation_raster)
 
@@ -102,16 +107,46 @@ output3 = mynet.min_cost_flow_parcels(network, res_points, food_points, food_loc
 output4 = mynet.max_flow_parcels(network, res_points, food_points, food_locs, dest_method='multiple')
 
 # plot_aoi -> lots can be added to this function
-mynet.plot_aoi(network, res_locs, food_locs)
+# mynet.plot_aoi(network, res_locs, food_locs)
 
 # summary_function -> lots can be added to this function in the future
-output5 = mynet.summary_function(network)
+# output5 = mynet.summary_function(network)
 
 # inundate_network
 # inundated_net = mynet.inundate_network(network, f_graphs, inundation_raster)
 # print(list(list(inundated_net.edges(data=True))[0][-1].keys()))
 
 # flow_decomposition
-output6 = mynet.flow_decomposition(network, res_points, food_points, res_locs, food_locs, dest_method='multiple')
+# output6 = mynet.flow_decomposition(network, res_points, food_points, res_locs, food_locs, dest_method='multiple')
+
+# traffic_assignment
+# start=time.time()
+
+output7 = mynet.traffic_assignment(network, 
+                                   res_points, 
+                                   food_points, 
+                                   food_locs, 
+                                   dest_method='multiple',
+                                   termination_criteria=['iter',1], 
+                                   algorithm='path_based',
+                                   method='CFW',
+                                   sparse_array=True)
+# end=time.time()
+# print(f"Time to compute: {end-start}")
 
 
+tstt1 = [round(num, 6) for num in output7[2]]
+sptt1 = [round(num, 6) for num in output7[3]]
+rg1 = [round(num, 6) for num in output7[4]]
+
+
+
+print(tstt1)
+print(sptt1)
+
+
+
+print(list(list(output7[0].edges(data=True))[0][-1].keys()))
+
+mynet.plot_aoi(output7[0], res_locs, food_locs, edge_width='TA_Flow')
+plt.show()
