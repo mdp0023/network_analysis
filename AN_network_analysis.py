@@ -9,6 +9,7 @@ import networkx as nx
 import pandas as pd
 import numpy as np
 import logging
+import time
 import math
 
 # ignore shapely deprectiation warnings
@@ -21,16 +22,72 @@ folder_path = '/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North'
 # bounadry and boundary with buffer
 aoi_area = f'{folder_path}/AN_Boundary/AN_Boundary.shp'
 aoi_buffer = f'{folder_path}/AN_Boundary/AN_Boundary_3km.shp'
-# Centroids of res parcels and grocery stores
+
+# Centroids and parcels
 res_parcel_loc = f'{folder_path}/AN_Residential_Parcel_Shapefiles/AN_Residential_Parcels.shp'
 res_points_loc = f'{folder_path}/AN_Residential_Parcel_Shapefiles/AN_Residential_Parcels_Points.shp'
+# supermarkets
 food_parcel_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_Supermarket_Parcel.shp'
 food_points_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_Supermarket_Parcel_Points.shp'
+# emergency rooms
+er_parcel_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_hospital_parcels.shp'
+er_points_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_hospital_points.shp'
+# pharmacies
+pharm_parcel_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_pharmacy_parcels.shp'
+pharm_points_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_pharmacy_points.shp'
+# police stations
+police_parcel_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_police_parcels.shp'
+police_points_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_police_points.shp'
+# convenience stores
+conv_parcel_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_convenience_parcels.shp'
+conv_points_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_convenience_points.shp'
+# fire stations
+fire_parcel_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_fire_station_parcels.shp'
+fire_points_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_fire_station_points.shp'
+# ems stations
+ems_parcel_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_ambulance_station_parcels.shp'
+ems_points_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_ambulance_station_points.shp'
+# fuel stations
+fuel_parcel_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_fuel_parcels.shp'
+fuel_points_loc = f'{folder_path}/AN_Resource_Parcel_Shapefiles/AN_fuel_points.shp'
 
+# read shapefiles
 res_parcels = gpd.read_file(res_parcel_loc)
 res_points = gpd.read_file(res_points_loc)
+
 food_parcels = gpd.read_file(food_parcel_loc)
 food_points = gpd.read_file(food_points_loc)
+
+er_parcels = gpd.read_file(er_parcel_loc)
+er_points = gpd.read_file(er_points_loc)
+
+pharm_parcels = gpd.read_file(pharm_parcel_loc)
+pharm_points = gpd.read_file(pharm_points_loc)
+
+police_parcels = gpd.read_file(police_parcel_loc)
+police_points = gpd.read_file(police_points_loc)
+
+conv_parcels = gpd.read_file(conv_parcel_loc)
+conv_points = gpd.read_file(conv_points_loc)
+
+fire_parcels = gpd.read_file(fire_parcel_loc)
+fire_points = gpd.read_file(fire_points_loc)
+
+ems_parcels = gpd.read_file(ems_parcel_loc)
+ems_points = gpd.read_file(ems_points_loc)
+
+fuel_parcels = gpd.read_file(fuel_parcel_loc)
+fuel_points = gpd.read_file(fuel_points_loc)
+
+
+all_resource_parcels=[food_parcels, er_parcels, pharm_parcels, police_parcels,
+                      conv_parcels, fire_parcels, ems_parcels, fuel_parcels]
+all_resource_points=[food_points, er_points, pharm_points, police_points,
+                      conv_points, fire_points, ems_points, fuel_points]
+
+# all_resource_parcels = [food_parcels, conv_parcels, fire_parcels]
+# all_resource_points = [food_points, conv_parcels, fire_points]
+
 
 aoi_shape = gpd.read_file(aoi_area)
 # Inundation raster
@@ -47,9 +104,9 @@ raster = rio.open(inundation_raster)
 
 # open saved graph
 G = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph')
-G_inun = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_Inundated')
-# G_TA_flood = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_Traffic_Assignment_AGR_Inundation')
-G_TA_no_flood = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_Traffic_Assignment_No_Inundation')
+# G_inun = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_Inundated')
+# # G_TA_flood = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_Traffic_Assignment_AGR_Inundation')
+# G_TA_no_flood = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_Traffic_Assignment_No_Inundation')
 
 # Inundate network
 # G_inun = mynet.inundate_network(G=G, 
@@ -197,26 +254,51 @@ G_TA_no_flood = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name
 # print(cost_of_flow)
 
 ##########################################################################
-#TRAFFIC ASSIGNMENT AND CORRESPONDING SPTT
-# G_output, AEC_list, TSTT_list, SPTT_list, RG_list, iter = mynet.traffic_assignment(G=G_inun,
-#                                                                                     res_points=res_points, 
-#                                                                                     dest_points=food_points,
-#                                                                                     dest_parcels=food_parcels,  
-#                                                                                     G_capacity='capacity',
-#                                                                                     G_weight='travel_time',
-#                                                                                     algorithm='link_based', 
-#                                                                                     method='MSA',
-#                                                                                     link_performance='BPR',
-#                                                                                     termination_criteria=['iter',50],
-#                                                                                     dest_method='multiple')
+# TRAFFIC ASSIGNMENT AND CORRESPONDING SPTT
+# G_output, AEC_list, TSTT_list, SPTT_list, RG_list, iter = mynet.traffic_assignment(G=G,
+#                                                                                    res_points=res_points,
+#                                                                                    dest_points=food_points,
+#                                                                                    dest_parcels=food_parcels,
+#                                                                                    G_capacity='capacity',
+#                                                                                    G_weight='travel_time',
+#                                                                                    algorithm='path_based',
+#                                                                                    method='MSA',
+#                                                                                    link_performance='BPR',
+#                                                                                    termination_criteria=[
+#                                                                                        'iter', 1],
+#                                                                                    dest_method='multiple',
+#                                                                                    sparse_array=True)
 
+time1=time.time()
+G_output, AEC_list, TSTT_list, SPTT_list, RG_list, iter = mynet.traffic_assignment(G=G,
+                                                                                    res_points=res_points, 
+                                                                                    dest_points=all_resource_points,
+                                                                                    dest_parcels=all_resource_parcels,  
+                                                                                    G_capacity='capacity',
+                                                                                    G_weight='travel_time',
+                                                                                    algorithm='path_based', 
+                                                                                    method='MSA',
+                                                                                    link_performance='BPR',
+                                                                                    termination_criteria=['iter',2],
+                                                                                    dest_method='multiple',
+                                                                                    sparse_array=True)
+time2=time.time()
+print(time2-time1)
 
-# print(f'AEC_list: {AEC_list}')
-# print(f'TSTT_list: {TSTT_list}')
-# print(f'SPTT_list: {SPTT_list}')
-# print(f'RG_list: {RG_list}')
-# print(f'iter: {iter}')
+print(f'AEC_list: {AEC_list}')
+print(f'TSTT_list: {TSTT_list}')
+print(f'SPTT_list: {SPTT_list}')
+print(f'RG_list: {RG_list}')
+print(f'iter: {iter}')
 
+mynet.plot_aoi(G=G_output,
+                background_edges=G,
+                bbox=aoi_shape,
+                res_parcels=res_parcels,
+                resource_parcels=all_resource_parcels,
+                edge_width='TA_Flow',
+                scalebar=True)
+plt.show()
 
 # output = mynet.flow_decomposition(G=G_TA_no_flood,
 #                                     res_points=res_points,
@@ -250,14 +332,14 @@ G_TA_no_flood = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name
 ##############################################################################
 # # PLOT INUNDATED NETWORK BY DEPTH ON ROADWAY
 
-mynet.plot_aoi(G=G_inun, 
-                res_parcels=res_parcels,
-                bbox=aoi_shape,
-                resource_parcels=food_parcels,
-                edge_color='max_inundation_mm', 
-                scalebar=True)
+# mynet.plot_aoi(G=G_inun, 
+#                 res_parcels=res_parcels,
+#                 bbox=aoi_shape,
+#                 resource_parcels=food_parcels,
+#                 edge_color='max_inundation_mm', 
+#                 scalebar=True)
 
-plt.show()
+# plt.show()
 
 
 
