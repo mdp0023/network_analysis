@@ -9,6 +9,8 @@ import sys
 import copy
 import math
 import heapq
+from heapq import heappop, heappush
+from collections import defaultdict
 import rasterio
 import numpy as np
 import osmnx as ox
@@ -17,6 +19,8 @@ import rasterio.mask
 import networkx as nx
 import geopandas as gpd
 import matplotlib as mpl
+from mpl_toolkits.axes_grid1.anchored_artists import AnchoredDirectionArrows
+import matplotlib.patches as mpatches
 from typing import Union
 from scipy import sparse
 from scipy.stats import iqr
@@ -181,7 +185,7 @@ def shape_2_graph(source: str):
     G = ox.graph_from_polygon(
         boundary['geometry'][0],
         network_type='drive')
-
+    
     # dictionary of highway speeds in kph
     hwy_speeds = {"motorway": 120,
                   "motorway_link": 120,
@@ -313,6 +317,11 @@ def shape_2_graph(source: str):
                     G[k[0]][k[1]][k[2]]['width'] = 1 * lane_width
                     G[k[0]][k[1]][k[2]]['capacity'] *= G[k[0]][k[1]][k[2]]['lanes']/2
     
+
+    # Need to check/add bridge data. When inundating network, bridge nodes are ignored and assumed to be above flood waters
+    for k, v in G.edges.items():
+        if 'bridge' not in G[k[0]][k[1]][k[2]]:
+            G[k[0]][k[1]][k[2]]['bridge'] = 'No'
 
     # project back to original crs
     G=ox.project_graph(G, crs_proj)
@@ -1276,6 +1285,7 @@ def plot_aoi(G: nx.Graph,
             resource_parcels: gpd.GeoDataFrame, 
             background_edges: gpd.GeoDataFrame=None,
             edge_width: str = None, 
+            edge_width_weight: int=1,
             edge_color: str = None,
             bbox: gpd.GeoDataFrame = None, 
             loss_access_parcels: gpd.GeoDataFrame = None, 
@@ -1283,7 +1293,9 @@ def plot_aoi(G: nx.Graph,
             inundation: rasterio.io.DatasetReader = None, 
             insets: list[str]=None, 
             save_loc: str = None,
-            decomp_flow: bool = False):
+            decomp_flow: bool = False,
+            rotation=False,
+            bg_water=None):
     '''
     Create a plot with commonly used features.
 
@@ -1326,6 +1338,7 @@ def plot_aoi(G: nx.Graph,
     # convert graph to gdf of edges and nodes
     G_gdf_edges = ox.graph_to_gdfs(G=G, nodes=False)
     G_gdf_nodes = ox.graph_to_gdfs(G=G, edges=False)
+
     # determing bounding box for plotting purposes
     if bbox is None:
         # set bbox to area of graph
@@ -1335,6 +1348,8 @@ def plot_aoi(G: nx.Graph,
                         total_bounds[1],
                         total_bounds[2],
                         total_bounds[0])
+        center_point=((total_bounds[2]-total_bounds[3])/2 + total_bounds[3],
+                    (total_bounds[0]-total_bounds[1])/2 + total_bounds[1])
     else:
         # set bbox to localized area
         total_bounds = bbox.total_bounds
@@ -1343,14 +1358,62 @@ def plot_aoi(G: nx.Graph,
                         total_bounds[1],
                         total_bounds[2],
                         total_bounds[0])
+        center_point=((total_bounds[2]-total_bounds[3])/2 + total_bounds[3],
+                      (total_bounds[0]-total_bounds[1])/2 + total_bounds[1])
 
+    # calculate new bounds if rotated
+    if rotation is not None:
+        if bbox is None:
+            newbbox=gpd.GeoSeries(g for g in G_gdf_edges['geometry'])
+        else:
+            newbbox = gpd.GeoSeries(g for g in bbox['geometry'])
+        G_gdf_edges_rot = newbbox.rotate(rotation, origin=center_point)
+        total_bounds = G_gdf_edges_rot.total_bounds
+        total_bounds = (total_bounds[3],
+                        total_bounds[1],
+                        total_bounds[2],
+                        total_bounds[0])
+
+        
+
+    # create subplot with background color and remove axis
     fig, ax = plt.subplots(facecolor='white', figsize=(12,12))
-    ax.axis('off')
+    # fig.set_facecolor('none')
+    # Hide X and Y axes label marks
+    ax.xaxis.set_tick_params(labelbottom=False)
+    ax.yaxis.set_tick_params(labelleft=False)
+    # Hide X and Y axes tick marks
+    ax.set_xticks([])
+    ax.set_yticks([])
+    plt.axis('off')
+
+    # set facecolor
+    ax.set_facecolor('whitesmoke')
+
+    # set bounding limits 
+    ax.set_xlim((total_bounds[3], total_bounds[2]))
+    ax.set_ylim((total_bounds[1], total_bounds[0]))
     
+    # plot background water
+    if bg_water is None:
+        pass
+    else:
+        if rotation is False:
+            bg_water.plot(ax=ax, color='midnightblue')
+        else:
+            bg_water_rot = gpd.GeoSeries(g for g in bg_water['geometry'])
+            bg_water_rot = bg_water_rot.rotate(rotation, origin=center_point)
+            bg_water_rot.plot(ax=ax, color='midnightblue')
+
     # plot roads, residential parcels, and resource parcels
     # if decomp_flow is True, plot res parcels with scale bar to show travel times
     if decomp_flow is True:
-        res_parcels.plot(ax=ax, color='tan') 
+        if rotation is False:        
+            res_parcels.plot(ax=ax, color='tan')
+        else:
+            res_parcels_rot = gpd.GeoSeries(g for g in res_parcels['geometry'])
+            res_parcels_rot = res_parcels_rot.rotate(rotation, origin=center_point)
+            res_parcels_rot.plot(ax=ax, color='tan') 
         # # IQR METHOD to mask impact of outliers
         costs = sorted(res_parcels['cost_of_flow'].tolist())
         costs = [x for x in costs if math.isnan(x)==False]
@@ -1358,46 +1421,88 @@ def plot_aoi(G: nx.Graph,
         iqr=q3-q1
         upper_bound=q3+(3*iqr)
         res_parcels.loc[res_parcels['cost_of_flow']>=upper_bound, ['cost_of_flow']]=upper_bound
-        res_parcels.plot(ax=ax, column='cost_of_flow',cmap='bwr', legend=False)
-        
+        if rotation is False:        
+            res_parcels.plot(ax=ax, color='tan')
+        else:
+            res_parcels_rot = gpd.GeoSeries(g for g in res_parcels['geometry'])
+            res_parcels_rot = res_parcels_rot.rotate(rotation, origin=center_point)
+            res_parcels_rot.plot(ax=ax, column='cost_of_flow',cmap='bwr', legend=False)      
     else:
-        res_parcels.plot(ax=ax, color='tan')
+        if rotation is False:        
+            res_parcels.plot(ax=ax, color='tan')
+        else:
+            res_parcels_rot = gpd.GeoSeries(g for g in res_parcels['geometry'])
+            res_parcels_rot = res_parcels_rot.rotate(rotation, origin=center_point)
+            res_parcels_rot.plot(ax=ax, color='tan')
     
     # plot the resource parcels
     if isinstance(resource_parcels, gpd.GeoDataFrame):
-        resource_parcels.plot(ax=ax, color='mediumseagreen', edgecolor='darkgreen', linewidth=0.5)
+        if rotation is False:        
+            resource_parcels.plot(ax=ax, color='mediumseagreen', edgecolor='darkgreen', linewidth=0.5)
+        else:
+            resource_parcels_rot = gpd.GeoSeries(g for g in resource_parcels['geometry'])
+            resource_parcels_rot = resource_parcels_rot.rotate(rotation, origin=center_point)
+            resource_parcels_rot.plot(ax=ax, color='mediumseagreen', edgecolor='darkgreen', linewidth=0.5)
     elif isinstance(resource_parcels, list):
-        colors = ['#a6cee3', '#1f78b4', '#b2df8a', '#33a02c',
-                  '#fb9a99', '#e31a1c', '#fdbf6f', '#ff7f00']
-        edgecolors=['#265b78','#0c3048','#46711f','#144012',
-                    '#9b0806','#5b0a0b','#905202','#663300']
+        colors = ['#ff7f00', '#1f78b4',  '#33a02c','#b2df8a',
+                  '#fb9a99', '#e31a1c', '#fdbf6f', '#a6cee3']
+        edgecolors=['#663300','#0c3048','#144012','#46711f',
+                    '#9b0806','#5b0a0b','#905202','#265b78']
         for i, parcel in enumerate(resource_parcels):
-            parcel.plot(ax=ax, color=colors[i], edgecolor=edgecolors[i], linewidth=0.5)
+            if rotation is False:        
+                parcel.plot(ax=ax, color=colors[i], edgecolor=edgecolors[i], linewidth=0.5)
+            else:
+                parcel_rot = gpd.GeoSeries(g for g in parcel['geometry'])
+                parcel_rot = parcel_rot.rotate(rotation, origin=center_point)
+                parcel_rot.plot(ax=ax, color=colors[i], edgecolor=edgecolors[i], linewidth=0.5)
 
     # option to plot loss of access parcels
     if loss_access_parcels is None:
         pass
     else:
-        loss_access_parcels.plot(ax=ax, color='saddlebrown')
+        if rotation is False:        
+            loss_access_parcels.plot(ax=ax, color='saddlebrown')
+        else:
+            loss_access_parcels_rot = gpd.GeoSeries(g for g in loss_access_parcels['geometry'])
+            loss_access_parcels_rot = loss_access_parcels_rot.rotate(rotation, origin=center_point)
+            loss_access_parcels_rot.plot(ax=ax, color='saddlebrown')
 
     # plot background light gray roads
     # plot different background edges if value given
     if background_edges is None:
-        ox.plot.plot_graph(G,
-                            ax=ax,
-                            node_size=0, node_color='black',
-                            edge_color='lightgray',
-                            show=False,
-                            edge_linewidth=1,
-                            bbox=total_bounds)
+        G_gdf_edges = ox.graph_to_gdfs(G=G, nodes=False)
+        if rotation is False:
+            G_gdf_edges.plot(ax=ax, edgecolor='lightgray',
+                             linewidth=1, zorder=-1)
+        else:
+            G_gdf_edges_rot = gpd.GeoSeries(g for g in G_gdf_edges['geometry'])
+            G_gdf_edges_rot = G_gdf_edges_rot.rotate(rotation, origin=center_point)
+            G_gdf_edges_rot.plot(ax=ax, edgecolor='lightgray', linewidth=1,zorder=-1)
+
+        # ox.plot.plot_graph(G,
+        #                     ax=ax,
+        #                     node_size=0, node_color='black',
+        #                     edge_color='lightgray',
+        #                     show=False,
+        #                     edge_linewidth=1,
+        #                     bbox=total_bounds)
     else:
-        ox.plot.plot_graph(background_edges,
-                            ax=ax,
-                            node_size=0, node_color='black',
-                            edge_color='lightgray',
-                            show=False,
-                            edge_linewidth=1,
-                            bbox=total_bounds)
+        G_gdf_edges_c = ox.graph_to_gdfs(G=background_edges, nodes=False)
+        if rotation is False:
+            G_gdf_edges_c.plot(ax=ax, edgecolor='lightgray', linewidth=1,zorder=-1)
+        else:
+            G_gdf_edges_rot = gpd.GeoSeries(
+                g for g in G_gdf_edges_c['geometry'])
+            G_gdf_edges_rot = G_gdf_edges_rot.rotate(rotation, origin=center_point)
+            G_gdf_edges_rot.plot(ax=ax, edgecolor='lightgray', linewidth=1,zorder=-1)
+
+        # ox.plot.plot_graph(background_edges,
+        #                     ax=ax,
+        #                     node_size=0, node_color='black',
+        #                     edge_color='lightgray',
+        #                     show=False,
+        #                     edge_linewidth=1,
+        #                     bbox=total_bounds)
 
     # plot edges based on color (typically max inundation on the road)
     if edge_color is None:
@@ -1407,7 +1512,6 @@ def plot_aoi(G: nx.Graph,
         vals = pd.Series(nx.get_edge_attributes(G, edge_color))
         # set the bounds of the color
         bounds=[0,10,50,100,150,200,250,300,350,400,500,600,vals.dropna().max()]
-        
         #define the colormap
         cmap = plt.cm.Blues  
 
@@ -1421,7 +1525,7 @@ def plot_aoi(G: nx.Graph,
             'Custom cmap', cmaplist, cmap.N)
 
         bounds=[0,10,150,300,600,vals.dropna().max()]
-        cmap = (mpl.colors.ListedColormap(['lightgray', 'paleturquoise','deepskyblue', 'royalblue', 'black']))
+        cmap = (mpl.colors.ListedColormap(['lightgray', 'paleturquoise','deepskyblue', 'royalblue', 'mediumblue']))
 
         # normalize the colors and create mapping color object
         norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
@@ -1431,20 +1535,29 @@ def plot_aoi(G: nx.Graph,
         # TODO: incorporate into single plot, for now just create a second figure for the scale bar
         fig2, ax2 = plt.subplots(figsize=(6, 1))
         fig2.subplots_adjust(bottom=0.5)
-        fig.colorbar( mpl.cm.ScalarMappable(cmap=cmap, norm=norm),
+        fig2.colorbar( mpl.cm.ScalarMappable(cmap=cmap, norm=norm),
                         cax=ax2,
                         ticks=bounds,
                         orientation='horizontal',
                         label='Max Inundation on Road (mm)')
 
 
-        ox.plot_graph(G,
-                      ax=ax,
-                      node_size=0, node_color='black',
-                      edge_color=color_series,
-                      show=False,
-                      edge_linewidth=1.,
-                      bbox=total_bounds)
+        G_gdf_edges = ox.graph_to_gdfs(G=G, nodes=False)
+        if rotation is False:
+            G_gdf_edges.plot(ax=ax, edgecolor=color_series,
+                             linewidth=edge_width_weight)
+        else:
+            G_gdf_edges_rot = gpd.GeoSeries(g for g in G_gdf_edges['geometry'])
+            G_gdf_edges_rot = G_gdf_edges_rot.rotate(rotation, origin=center_point)
+            G_gdf_edges_rot.plot(ax=ax, edgecolor=color_series, linewidth=1)
+
+        # ox.plot_graph(G,
+        #               ax=ax,
+        #               node_size=0, node_color='black',
+        #               edge_color=color_series,
+        #               show=False,
+        #               edge_linewidth=1.,
+        #               bbox=total_bounds)
 
     # plot edges based on width
     if edge_width is None:
@@ -1455,7 +1568,7 @@ def plot_aoi(G: nx.Graph,
         for x in flow_dict:
             flows.append(flow_dict[x])
         unique_flows = np.unique(flows).tolist()
-        unique_flows.pop(0)
+        # unique_flows.pop(0)
         old_min = min(unique_flows)
         old_max = max(unique_flows)
         new_min = 1
@@ -1470,27 +1583,24 @@ def plot_aoi(G: nx.Graph,
         # for flow in unique_flows:
         #     new_value = (((flow - old_min) * (new_max - new_min)) /
         #                  (old_max - old_min)) + new_min
-        
         for idx, width in enumerate(widths):
-
             # select edges of gdf based on flow value
             selected_edges = G_gdf_edges[(G_gdf_edges[edge_width] >= bounds[idx]) & (G_gdf_edges[edge_width] <= bounds[idx+1])]
             if len(selected_edges) > 0:
-                sub = ox.graph_from_gdfs(gdf_edges=selected_edges,
-                                        gdf_nodes=G_gdf_nodes)
+
                 
-                ox.plot.plot_graph(sub,
-                                ax=ax,
-                                node_size=0,
-                                edge_color='black',
-                                show=False,
-                                edge_linewidth=width,
-                                bbox=total_bounds)
+                if rotation is False:
+                    selected_edges.plot(ax=ax, edgecolor='black', linewidth=width)
+                else:
+                    G_gdf_edges_rot = gpd.GeoSeries(g for g in selected_edges['geometry'])
+                    G_gdf_edges_rot = G_gdf_edges_rot.rotate(rotation, origin=center_point)
+                    G_gdf_edges_rot.plot(ax=ax, edgecolor='black', linewidth=width)
 
     # optional plot inundation raster
     if inundation is None:
         pass
     else:
+        print('PROBABLY BUG: NEED TO ADD ROTATION')
         # Choose colormap
         cmap = plt.cm.Blues
         # Get the colormap colors
@@ -1511,26 +1621,95 @@ def plot_aoi(G: nx.Graph,
     else:
         for inset in insets:
             inset = gpd.read_file(inset)
+            
+            if rotation is False:
+                inset.plot(ax=ax,edgecolor='forestgreen',linewidth=3,zorder=1000)
+            else:
+                inset_rot = gpd.GeoSeries(g for g in inset['geometry'])
+                inset_rot = inset_rot.rotate(rotation, origin=center_point)
+                inset_rot.plot(ax=ax,edgecolor='forestgreen',linewidth=3,zorder=1000)
+
+
+
+
+            inset = gpd.read_file(inset)
             inset.boundary.plot(ax=ax,
                                 edgecolor='forestgreen',
                                 linewidth=3,
                                 zorder=1000)
+
+    # plot tight layout
+    fig.tight_layout()
 
     # optional add scale bar
     if scalebar is False:
         pass
     else:
         ax.add_artist(ScaleBar(1,
-                               frameon=True,
-                               box_color='lightgray',
-                               location='lower left'))
-    fig.tight_layout()
+                                # length_fraction=0.2,
+                                frameon=True,
+                                box_color='lightgray',
+                                location='lower left'))
+
+        # to determine width and length of head, need to convert display coordinates to data coordinates
+        # display coordinates is in inches
+        # want an arrow that has a width of half an inch and a length of 1 inch
+        inv=ax.transData.inverted()
+        trans_size = inv.transform([(0,0),(0.5,1.5)])
+        head_width = trans_size[1][0]-trans_size[0][0]
+        head_length = trans_size[1][1]-trans_size[0][1]
+
+        x_tail = 0.95
+        y_tail = 0.04
+        x_head = 0.95
+        y_head = 0.105
+        old_center = ((x_tail+x_head)/2,(y_tail+y_head)/2)
+
+        tails=(x_tail,y_tail)
+        heads=(x_head,y_head)
+
+        if rotation is not False:
+            # rotate points around center - rotation is postive when counterclockwise
+            angle=rotation*np.pi/180
+            x_tail_r = (x_tail-old_center[0])*np.cos(angle)-(y_tail-old_center[1])*np.sin(angle)+old_center[0]
+            y_tail_r = (x_tail-old_center[0])*np.sin(angle)+(y_tail-old_center[1])*np.cos(angle)+old_center[1]        
+            x_head_r = (x_head-old_center[0])*np.cos(angle)-(y_head-old_center[1])*np.sin(angle)+old_center[0]
+            y_head_r = (x_head-old_center[0])*np.sin(angle)+(y_head-old_center[1])*np.cos(angle)+old_center[1]
+            tails=(x_tail_r,y_tail_r)
+            heads=(x_head_r,y_head_r)
+        arrow = mpatches.FancyArrowPatch(tails, 
+                                         heads,
+                                         mutation_scale=25,
+                                         transform=ax.transAxes,
+                                         facecolor='black',arrowstyle='fancy',
+                                         zorder=1000)
+        ax.add_patch(arrow)
+
+        # variables for adding N
+        xy = (0.95, 0.1)
+        xy_text=(0.95, 0.01)
+
+        if rotation is not False:
+            if abs(rotation) >= 45:
+                xy_text = (0.95, 0.02)
+
+        # add N
+        ax.annotate('N', 
+                    xy=xy, 
+                    xycoords='axes fraction',
+                    xytext=xy_text,
+                    textcoords='axes fraction',
+                    va='bottom', 
+                    ha='center',
+                    fontsize=18)
+
 
     if save_loc is None:
         pass
     else:
         plt.savefig(save_loc)
-    return(fig)
+    
+    return(fig, ax)
 
 
 def summary_function(G: nx.Graph):
@@ -1608,7 +1787,7 @@ def inundate_network(G: nx.Graph,
                      G_width: str = 'width',
                      G_speed: str = 'speed_kph', 
                      G_length: str = 'length',
-                     pp: int = 4, 
+                     pp: int = 8, 
                      name: str = 'AOI_Graph_Inundated'):
     '''
     Create a new graph network based on the imapct of an inundation layer.
@@ -1628,7 +1807,7 @@ def inundate_network(G: nx.Graph,
 
     :param G: The graph network
     :type G: networkx.Graph [Multi, MultiDi, Di]
-    :param path: File path to save output graph network to. Will have the name 'AOI_Graph_Inundated'
+    :param path: File path to save output graph network to. Will have name based on name argument
     :type path: string
     :param inundation: File path to inundation raster .tif
     :type inundation: string
@@ -1655,26 +1834,39 @@ def inundate_network(G: nx.Graph,
     edges['buffer_geometry'] = edges.buffer(distance=edges[G_width], cap_style=2)
     edges.set_geometry(col='buffer_geometry', drop='geometry, inplace=True')
 
-    # BEGIN PARALLEL PROCESSING
-    # geometry column number
-    geo_col_num = edges.columns.get_loc("geometry")
-    # the individual inundation zonal statistic task
-    def inundate_zs(n):
-        return zonal_stats(edges.iat[n,geo_col_num], inundation, stats='max')
-    # create the sequence of numbers for each edge
-    n=range(0,len(edges))
-    # create a pool of workers and run the function inundate_zs for each zone
-    # map() function creates the background batches
-    pool=Pool(pp)
-    results=pool.map(inundate_zs, n)
-    # close the pool
-    pool.close()
-    # END PARALLEL PROCESSING
+
+    with rasterio.open(inundation) as src:
+        array=src.read(1)
+        transform =src.transform
+
+        # BEGIN PARALLEL PROCESSING
+        # geometry column number
+        geo_col_num = edges.columns.get_loc("geometry")
+        # the individual inundation zonal statistic task
+        def inundate_zs(n):
+            return zonal_stats(edges.iat[n,geo_col_num], 
+                               raster=array,
+                               affine=transform,
+                               stats='max')
+        # create the sequence of numbers for each edge
+        n=range(0,len(edges))
+        # create a pool of workers and run the function inundate_zs for each zone
+        # map() function creates the background batches
+        pool=Pool(pp)
+        results=pool.map(inundate_zs, n)
+        # close the pool
+        pool.close()
+        pool.join()
+        # END PARALLEL PROCESSING
 
     # convert results to list - if None, where raster doesn't intersect shapefile, replace with 0
     results_as_list = [0 if d[0]['max'] is None else round(d[0]['max']*1000/10)*10 for d in results]
     # relate back to edges geodataframe
     edges['max_inundation_mm'] = results_as_list
+    
+    # any edge that is a bridge, set max_inundation_mm to 0
+    edges.loc[edges['bridge'] == 'yes', 'max_inundation_mm'] = 0
+
     
     # reduction equation options
     # conservative -> 0.0002415w**2 - 0.2898w + 86.94
@@ -1708,6 +1900,15 @@ def inundate_network(G: nx.Graph,
     # save edited graph
     new_graph = ox.graph_from_gdfs(nodes, edges)
     save_2_disk(G=new_graph, path=path, name=name)
+    # eliminate variables to save memory
+    n=None
+    nodes=None
+    edges=None
+    results=None
+    geo_col_num=None
+    results_as_list=None
+    
+
     return (new_graph)
 
 
@@ -2177,7 +2378,7 @@ def flow_decomposition(G: nx.Graph,
                 for i, dest_parcel in dest_parcel.iterrows():
                     dest_node = dest_point[dest_point.geometry.within(dest_parcel.geometry)]
                     #since we could have multiple dest nodes within a single boundary (multiple resources located at same parcel) need to iterate through dest_node
-                    for i, node in dest_node.iterrows():
+                    for x, node in dest_node.iterrows():
                         dest_node_ids -= 1
                         # add the dest node to the graph using OSMID as its ID
                         G.add_nodes_from([(dest_node_ids, {G_demand: 0})])
@@ -2220,61 +2421,65 @@ def flow_decomposition(G: nx.Graph,
             while len(G_inter.edges)>0:
                 # Find the shortest path from the artifical source to artificial sink
                 path = ox.distance.shortest_path(G_inter,0,99999999,weight=G_weight)
-                # create empty list of flows -> allowable flow through each edge along shortest path
-                flows = []
-                # length of the shortest path
-                len_path=len(path)
-                # calculate the cost per unit flow along this path
-                cost = nx.path_weight(G_inter, path, weight=G_weight)
-                # for each edge in the path, append flows with the allowable flow
-                for i, x in enumerate(path):
-                    if i==len_path-1:
-                        pass
-                    else:
-                        flows.append(G_inter[path[i]][path[i+1]]['allowable_flow'])
-                # limiting flow is the minimum allowable flow along the edges in the path
-                limiting_flow=min(flows)
-                # for each edge along the path, subtract the limiting flow from allowable flow
-                # if the allowable flow is reduced to zero, remove the edge
-                for i, x in enumerate(path):
-                    if i == len_path-1:
-                        pass
-                    else:
-                        G_inter[path[i]][path[i+1]]['allowable_flow'] -= limiting_flow
-                        if G_inter[path[i]][path[i+1]]['allowable_flow'] == 0:
-                            G_inter.remove_edge(path[i],path[i+1])
-                
-                # append the decomposed path dictionary with the necessary information
-                # the key is the origin
-                source = path[1]
-                sink = path[-2]
-                if source in decomposed_paths.keys():
-                    decomposed_paths[source]['Sink'].append(sink)
-                    decomposed_paths[source]['Path'].append([' '.join(map(str, l)) for l in [path[1:-1]]])
-                    decomposed_paths[source]['Flow'].append(limiting_flow)
-                    decomposed_paths[source]['Cost Per Flow'].append(cost)
-                    decomposed_paths[source]['Number of Unique Paths'] += 1
-                    decomposed_paths[source]['Total Flow'] += limiting_flow  
+                # BUG: there are times where edges still exist but no viable path, likely due to rounding errors?
+                if path is None:
+                    break
                 else:
-                    decomposed_paths[source] = {'Source': [source], 'Sink': [sink], 'Path': [' '.join(map(str, l)) for l in [path[1:-1]]], 'Flow': [limiting_flow], 'Cost Per Flow': [cost], 'Number of Unique Paths': 1, 'Total Flow': limiting_flow}
+                    # create empty list of flows -> allowable flow through each edge along shortest path
+                    flows = []
+                    # length of the shortest path
+                    len_path=len(path)
+                    # calculate the cost per unit flow along this path
+                    cost = nx.path_weight(G_inter, path, weight=G_weight)
+                    # for each edge in the path, append flows with the allowable flow
+                    for i, x in enumerate(path):
+                        if i==len_path-1:
+                            pass
+                        else:
+                            flows.append(G_inter[path[i]][path[i+1]]['allowable_flow'])
+                    # limiting flow is the minimum allowable flow along the edges in the path
+                    limiting_flow=min(flows)
+                    # for each edge along the path, subtract the limiting flow from allowable flow
+                    # if the allowable flow is reduced to zero, remove the edge
+                    for i, x in enumerate(path):
+                        if i == len_path-1:
+                            pass
+                        else:
+                            G_inter[path[i]][path[i+1]]['allowable_flow'] -= limiting_flow
+                            if G_inter[path[i]][path[i+1]]['allowable_flow'] == 0:
+                                G_inter.remove_edge(path[i],path[i+1])
+                    
+                    # append the decomposed path dictionary with the necessary information
+                    # the key is the origin
+                    source = path[1]
+                    sink = path[-2]
+                    if source in decomposed_paths.keys():
+                        decomposed_paths[source]['Sink'].append(sink)
+                        decomposed_paths[source]['Path'].append([' '.join(map(str, l)) for l in [path[1:-1]]])
+                        decomposed_paths[source]['Flow'].append(limiting_flow)
+                        decomposed_paths[source]['Cost Per Flow'].append(cost)
+                        decomposed_paths[source]['Number of Unique Paths'] += 1
+                        decomposed_paths[source]['Total Flow'] += limiting_flow  
+                    else:
+                        decomposed_paths[source] = {'Source': [source], 'Sink': [sink], 'Path': [' '.join(map(str, l)) for l in [path[1:-1]]], 'Flow': [limiting_flow], 'Cost Per Flow': [cost], 'Number of Unique Paths': 1, 'Total Flow': limiting_flow}
 
-                # Add sink insights, keyed by the sink
-                if dest_method == 'single': 
-                    if sink in sink_insights.keys():
-                        sink_insights[sink]['Number of unique paths'] +=1
-                        sink_insights[sink]['Total flow w/o walking']+= limiting_flow
-                        sink_insights[sink]['Total flow w/ walking']+= limiting_flow
-                    else:
-                        sink_insights[sink] = {'Number of unique paths': 1, 'Total flow w/o walking': limiting_flow, 'Total flow w/ walking': limiting_flow + len(res_points_c.loc[res_points_c['nearest_node'] == sink])}
-                
-                if dest_method == 'multiple':
-                    if sink in sink_insights.keys():
-                        sink_insights[sink]['Number of unique paths'] +=1
-                        sink_insights[sink]['Total flow w/o walking']+= limiting_flow
-                        sink_insights[sink]['Total flow w/ walking']+= limiting_flow 
-                    else:
-                        near_nodes = list(map(int, dest_point.loc[dest_point['dest_node_ids'] == sink, 'nearest_nodes'].iloc[0].split(' ')))
-                        sink_insights[sink] = {'Number of unique paths': 1, 'Total flow w/o walking': limiting_flow, 'Total flow w/ walking': limiting_flow + len(res_points_c.loc[res_points_c['nearest_node'].isin(near_nodes)])}
+                    # Add sink insights, keyed by the sink
+                    if dest_method == 'single': 
+                        if sink in sink_insights.keys():
+                            sink_insights[sink]['Number of unique paths'] +=1
+                            sink_insights[sink]['Total flow w/o walking']+= limiting_flow
+                            sink_insights[sink]['Total flow w/ walking']+= limiting_flow
+                        else:
+                            sink_insights[sink] = {'Number of unique paths': 1, 'Total flow w/o walking': limiting_flow, 'Total flow w/ walking': limiting_flow + len(res_points_c.loc[res_points_c['nearest_node'] == sink])}
+                    
+                    if dest_method == 'multiple':
+                        if sink in sink_insights.keys():
+                            sink_insights[sink]['Number of unique paths'] +=1
+                            sink_insights[sink]['Total flow w/o walking']+= limiting_flow
+                            sink_insights[sink]['Total flow w/ walking']+= limiting_flow 
+                        else:
+                            near_nodes = list(map(int, dest_point.loc[dest_point['dest_node_ids'] == sink, 'nearest_nodes'].iloc[0].split(' ')))
+                            sink_insights[sink] = {'Number of unique paths': 1, 'Total flow w/o walking': limiting_flow, 'Total flow w/ walking': limiting_flow + len(res_points_c.loc[res_points_c['nearest_node'].isin(near_nodes)])}
 
             # Begin relating decomposition results to outputs 
             # 1. first determine the unique origin nodes that don't have a path and mark accordingly
@@ -2429,12 +2634,8 @@ def flow_decomposition(G: nx.Graph,
 
 
 
-
-
-       
-
-
 # HELPER FUNCTIONS - all predominently utilized in traffic assignment
+
 def shortestPath(origin: int, 
                  capacity_array: np.array, 
                  weight_array: np.array):
@@ -2542,10 +2743,50 @@ def shortestPath_heap(origin: int,
     :rtype: tuple
 
     # """
+
+    # UNTESTED: chatgpt vesrion start
+    # Initialize the data structures
+    # lil_array=weight_array
+    # source=origin
+    # target=destination
+    # num_nodes = lil_array.shape[0]
+    # visited = np.zeros(num_nodes, dtype=bool)
+    # costlabel = np.full(num_nodes, np.inf)
+    # backnode = np.full(num_nodes, -1, dtype=int)
+
+    # # Set the cost of the source node to zero
+    # costlabel[source] = 0
+
+    # # Initialize the priority queue with the source node
+    # pq = [(0, source)]
+
+    # # Main loop
+    # while pq:
+    #     # Pop the node with the smallest tentative distance from the priority queue
+    #     current_dist, current_node = heapq.heappop(pq)
+
+    #     # If the node has already been visited or is the target node, continue to the next iteration
+    #     if visited[current_node] or (target is not None and current_node == target):
+    #         continue
+
+    #     # Mark the current node as visited
+    #     visited[current_node] = True
+
+    #     # Update the costlabel and backnode of the neighbors of the current node
+    #     for neighbor, weight in zip(lil_array.rows[current_node], lil_array.data[current_node]):
+    #         new_cost = costlabel[current_node] + weight
+    #         if new_cost < costlabel[neighbor]:
+    #             costlabel[neighbor] = new_cost
+    #             backnode[neighbor] = current_node
+    #             # Add the neighbor to the priority queue with its tentative distance as the priority
+    #             heapq.heappush(pq, (new_cost, neighbor))
+    # chat gpt version end
+
+    # # ORIGINAL algorithm
     # # Need the number of nodes for calculations
     # numnodes = np.shape(capacity_array)[0]
 
-    # # Set up backnode and cost lists to return
+    # # # Set up backnode and cost lists to return
     # backnode = [-1] * numnodes
     # costlabel = [np.inf] * numnodes
 
@@ -2597,13 +2838,21 @@ def shortestPath_heap(origin: int,
 
     # backnode = np.asarray(backnode)
     # costlabel = np.asarray(costlabel)
+
     # backnodes equal to list indicating previous node in shortest path
     # costlabel is list of costs associated with each node
+   
+    # UNTESTED: network x conversion
+    # new_g = nx.from_scipy_sparse_array(weight_array, create_using=nx.DiGraph)
+    # backnode, costlabel = nx.dijkstra_predecessor_and_distance(new_g,origin,weight='weight')
+    # backnode= nx.dijkstra_path(new_g,origin,destination)
+    # costlabel=nx.dijkstra_path_length(new_g,origin)
 
-    # test scipy sparse function
-    costlabel,backnode = sparse.csgraph.dijkstra(weight_array,indices=origin,return_predecessors=True)
- 
-
+    #  scipy sparse function
+    # BUG: Sometimes dijkstras gets caught in infinite loop -> not sure why 
+    # Bellman-Ford works but its incredibly slow
+    costlabel,backnode = sparse.csgraph.shortest_path(weight_array,indices=origin,return_predecessors=True,method='D')
+    # costlabel,backnode = sparse.csgraph.dijkstra(weight_array,indices=origin,return_predecessors=True)
     return (backnode, costlabel)
 
 def pathTo(backnode, costlabel, origin, destination):
@@ -2634,6 +2883,7 @@ def pathTo_mod(backnode, costlabel, origin, destination):
     nxt2=[]
     idx = destination
     counter=0
+    
     while idx > 0:
         idx = backnode[idx]
         if counter==0:
@@ -2725,7 +2975,7 @@ def SPTT_parallel(n):
             return path, cost 
         if n[3] == 'path_cost_backnode':
             return path, cost, backnode
-
+    
 # PARALLELIZATION HELPER FUNCTIONS USED IN TRAFFIC ASSIGNMENT
 
 ###### HELPER FUNCTIONS CURRENTLY NOT BEING USED ######
@@ -2930,7 +3180,7 @@ def traffic_assignment(G: nx.Graph,
     # Set variables that will be used as constants throughout algorithm - set keeping int32 byte criteria in mind
     super_sink = 99999999
     super_origin = 0
-    artificial_weight = 999999999
+    artificial_weight = 999999
     artificial_weight_min=1
     artificial_capacity = 999999999
 
@@ -3138,11 +3388,13 @@ def traffic_assignment(G: nx.Graph,
             #   (2): By having artifical route, can always send max flow w/o considering if accessible - if path goes through artifical link, than no access when cost is arbitrarily high
             # initialize OD_matrix        
             OD_matrix = np.empty([len(unique_origin_nodes)*len(unique_dest_nodes_list),3])
-            
+            indexList=[]
             for i, resource in enumerate(unique_dest_nodes_list):
                 for idx,x in enumerate(unique_origin_nodes):
                     # BUG: before adding to OD matrix, determine if a path even exists
                     if nx.has_path(G, x, super_sink) is False:
+                        # save index to be removed
+                        indexList.append(idx+i*len(unique_origin_nodes))
                         pass
                     else:
                         dest_node_val = temp_len+(i)    # similar to single dest file, except accounting for multiple super sinks
@@ -3150,14 +3402,16 @@ def traffic_assignment(G: nx.Graph,
                         OD_matrix[idx+i*len(unique_origin_nodes)][1] = G.nodes[x][f'demand{i}']*-1  # flow associated with the origin node
                         OD_matrix[idx+i*len(unique_origin_nodes)][2] = dest_node_val         
                         
-                        # need to add edges from each origin to super_sink with extreme weight and capacity to acpture loss of service
+                        # need to add edges from each origin to super_sink with extreme weight and capacity to capture loss of service
                         # HOWEVER, issue arrises if shared origin-destination, therefore not adding this artifical edge of x is also in inque_dest_nodes
                         if x not in shared_nodes[i]:
                             G.add_edge(x, super_sink+i, **{G_weight: artificial_weight, G_capacity: artificial_capacity})
 
-            # delete OD_matrix rows that we no longer need
-            indexList = np.where(~OD_matrix.any(axis=1))[0]
+            # delete OD_matrix rows that we no longer need - where values are 0 or nans
+            # indexList = np.where(~OD_matrix.any(axis=1))[0]
             OD_matrix = np.delete(OD_matrix, indexList, axis=0)
+            
+
 
             # d. Sort nodes in proper order
             #   This should in theory then preserve saying node '2' in array is node '2' in network g, especially with adding the artifical node, 0
@@ -3217,6 +3471,9 @@ def traffic_assignment(G: nx.Graph,
     node_list = [num for num in range(0, num_nodes)]    # list of all nodes
     pp=8                                                # set parallel processing variables
     
+
+    # increase the factor of the weight array
+    weight_array=weight_array.multiply(100)
     ####################################################################################################################
 
     # HELPER FUNCTIONS 
@@ -3266,6 +3523,8 @@ def traffic_assignment(G: nx.Graph,
                 if update_arr is not None:
                     for unique_links in update_links:
                         for link in unique_links:
+                            # update_arr[link[0], link[1]] = np.round(weight_array[link[0], link[1]] * (
+                            #     1+alpha_array*(flow_array[link[0], link[1]]/capacity_array[link[0], link[1]])**beta_array),0)
                             update_arr[link[0], link[1]] = weight_array[link[0], link[1]] * (
                                 1+alpha_array*(flow_array[link[0], link[1]]/capacity_array[link[0], link[1]])**beta_array)
                     return update_arr
@@ -3278,7 +3537,8 @@ def traffic_assignment(G: nx.Graph,
                     # calculate BPR function
                     weight_array_iter = weight_array.multiply(flow_array.multiply(capacity_array.power(-1)).power(beta_array).multiply(alpha_array)+addition)
                     weight_array_iter = weight_array_iter.tolil()
-                
+                    # BUG: need to add rounding to be able to converge???
+                    # weight_array_iter = sparse.lil_matrix(np.round(weight_array_iter.todense(), decimals=0))
                 
                 # old method of calculating BPR function - easier to read but much slower
                 # weight_array_iter = weight_array * (1+alpha_array*(flow_array/capacity_array)**beta_array)
@@ -3327,11 +3587,12 @@ def traffic_assignment(G: nx.Graph,
 
                 if update_arr is not None:
                     for link in update_links:
-                        update_arr[link[0], link[1]] = (
-                            beta_array*weight_array[link[0], link[1]]*alpha_array/capacity_array[link[0], link[1]]**beta_array)*flow_array[link[0], link[1]]**(beta_array-1)
+                        # update_arr[link[0], link[1]] = np.round((
+                        #     beta_array*weight_array[link[0], link[1]]*alpha_array/capacity_array[link[0], link[1]]**beta_array)*flow_array[link[0], link[1]]**(beta_array-1),0)
+                        update_arr[link[0], link[1]] = np.round((
+                            beta_array*weight_array[link[0], link[1]]*alpha_array/capacity_array[link[0], link[1]]**beta_array)*flow_array[link[0], link[1]]**(beta_array-1),0)
                     return update_arr
                 
-
                 else:
                     # convert to csr_arrays for faster calculations
                     weight_array = sparse.csr_array(weight_array)
@@ -3346,6 +3607,8 @@ def traffic_assignment(G: nx.Graph,
                     # link_performance_derivative = (beta_array*weight_array*alpha_array/capacity_array**beta_array)*flow_array**(beta_array-1)
                     
                     link_performance_derivative = link_performance_derivative.tolil()
+                    # BUG: need to add rounding to be able to converge???
+                    # link_performance_derivative = sparse.lil_matrix(np.round(link_performance_derivative.todense(), decimals=0))
             else:
                 link_performance_derivative = (
                     beta_array*weight_array*alpha_array/capacity_array**beta_array)*flow_array**(beta_array-1)
@@ -3691,6 +3954,8 @@ def traffic_assignment(G: nx.Graph,
             n = [[int(OD_matrix[n][0]), OD_matrix[n][1], int(OD_matrix[n][2]), 'path_cost', 'weight_array_iter'] for n in range(0, len(OD_matrix))]
             pool=Poolm(pp)
             results = pool.map(SPTT_parallel, n)
+            pool.close()
+            pool.join()
             for idx, result in enumerate(results):
                 path, cost = result
                 flow = OD_matrix[idx][1]
@@ -3701,8 +3966,7 @@ def traffic_assignment(G: nx.Graph,
                 else:
                     for i in path:
                         flow_array_star[i[0]][i[1]] += flow
-            pool.close()
-            pool.join()
+            
             # END PARALLEL CALC
 
             # Calculate termination variables
@@ -3850,6 +4114,7 @@ def traffic_assignment(G: nx.Graph,
                 flow_array = lambda_val*flow_array_star + (1-lambda_val)*flow_array 
 
             # Fill termination variable lists
+            print(SPTT, TSTT, AEC, RG)
             AEC_list.append(AEC)
             TSTT_list.append(TSTT)
             SPTT_list.append(SPTT)
@@ -3883,7 +4148,7 @@ def traffic_assignment(G: nx.Graph,
             # paths_array[x][2]: [list of flows (associated with paths)]
         paths_array = []
 
-
+        
         # populate paths_array matrix
         # BEGIN PARALLEL PROCESS
         # n = [origin, flow, destination, what to return, which weight array to use]
@@ -3891,6 +4156,8 @@ def traffic_assignment(G: nx.Graph,
         # n = [[int(OD_matrix[n][0]), OD_matrix[n][1], int(OD_matrix[n][2]), 'path', 'weight_array'] for n in range(0, len(OD_matrix))]
         pool=Poolm(pp)
         results = pool.map(SPTT_parallel, n)
+        pool.close()
+        pool.join()
         for idx, result in enumerate(results):
             path = result
             flow = OD_matrix[idx][1]
@@ -3904,8 +4171,6 @@ def traffic_assignment(G: nx.Graph,
                     flow_array[i[0]][i[1]] += flow
             # append the paths_array
             paths_array.append([[origin,destination],[path],[flow]])
-        pool.close()
-        pool.join()
         
         # END PARALLEL PROCESS
 
@@ -3944,29 +4209,37 @@ def traffic_assignment(G: nx.Graph,
                                                         alpha_array=alpha_array,
                                                         beta_array=beta_array,
                                                         sparse_array=sparse_array)
-        
+        # weight_array_iter=weight_array_iter.astype('float32')
+
         # calculate initial termination criteria variables
         SPTT=0
         # BEGIN PARALLEL PROCESS
         # n = [origin, flow, destination, what to return, which weight array to use]
         n = [[int(OD_matrix[n][0]), OD_matrix[n][1], int(OD_matrix[n][2]), 'cost', 'weight_array_iter',capacity_array, weight_array_iter] for n in range(0, len(OD_matrix))]
-        # n = [[int(OD_matrix[n][0]), OD_matrix[n][1], int(OD_matrix[n][2]), 'cost', 'weight_array_iter'] for n in range(0, len(OD_matrix))]
+        # n = [[int(OD_matrix[n][0]), OD_matrix[n][1], int(OD_matrix[n][2]), 'cost', 'weight_array_iter'] for n in range(0, len(OD_matrix))
         pool=Poolm(pp)
         results = pool.map(SPTT_parallel, n)
+        pool.close()
+        pool.join()
         for idx, result in enumerate(results):
             cost = result
             flow = OD_matrix[idx][1]
             SPTT += cost*flow
-        pool.close()
-        pool.join()
         # END PARALLEL PROCESS
         
-        # # BEGIN UNPARALLELED PROCESS
+        # # # BEGIN UNPARALLELED PROCESS
         # SPTT = 0
         # for idx, x in enumerate(OD_matrix):
+            
         #     origin = int(x[0])
         #     destination = int(x[2])
         #     flow = x[1]
+        #     # BUG without rounding, this is where reduced capacity test fails
+        #     # if idx==19:
+        #     #     print(origin)
+        #     #     print(destination)
+        #     #     print(flow)
+            
         #     # Calculate shortest paths
         #     backnode, costlabel = shortestPath_heap(origin=origin, 
         #                                             capacity_array=capacity_array, 
@@ -3975,6 +4248,13 @@ def traffic_assignment(G: nx.Graph,
         #                                             sparse_array=sparse_array)
         #     # don't actually need shortest path, just need the cost of the path
         #     cost = costlabel[destination]
+        #     # BUG without rounding, this is where reduced capacity test fails
+        #     # if idx == 19:
+        #     #     print(cost)
+        #     #     path=pathTo_mod(backnode, costlabel, origin, destination)[0]
+        #     #     print(path)
+        #     #     for link in path:
+        #     #         print(weight_array_iter[link[0],link[1]])
         #     # For shortest path travel time (SPTT) calculation 
         #     SPTT += cost*flow
         # # END UNPARALLELED PROCESS
@@ -3989,7 +4269,7 @@ def traffic_assignment(G: nx.Graph,
         TSTT_list.append(TSTT)
         SPTT_list.append(SPTT)
         RG_list.append(RG)
-
+ 
         # initialize a derivate flow array
         derivative = link_performance_derivative(capacity_array=capacity_array, 
                                                                 flow_array=flow_array, 
@@ -4003,16 +4283,19 @@ def traffic_assignment(G: nx.Graph,
         iter = 0
         iter_val = True
         # begin loop
-        while iter_val is True:
-            print(iter)
+        # have to initative adj_links_d to maintain track of adjacency links used in derivative
+        adj_links_d=[] 
         
+        while iter_val is True:
+            print(f'iter: {iter}')
+            timea=time.time()
             # Because flow shifts with each OD_pair, we cannot precalculate in parallel all of the shortest paths
             for OD_pair in paths_array:
                 origin = OD_pair[0][0]
                 destination = OD_pair[0][1]
                 paths = OD_pair[1]
                 flows = OD_pair[2]
-
+                # print(f'origin {origin}')
                 # # Find the new shortest path 
                 backnode, costlabel = shortestPath_heap(origin=origin, 
                                                         capacity_array=capacity_array, 
@@ -4020,11 +4303,12 @@ def traffic_assignment(G: nx.Graph,
                                                         adjlist=adjlist,
                                                         sparse_array=sparse_array,
                                                         destination=destination)
+
                 path_hat, cost_hat = pathTo_mod(backnode=backnode, 
                                                 costlabel=costlabel, 
                                                 origin=origin, 
                                                 destination=destination)
-            #END UNPARALLELED PROCESS
+                
 
                 # if path already in, don't append, just move it, and associated information to the end
                 if path_hat in paths:
@@ -4043,11 +4327,16 @@ def traffic_assignment(G: nx.Graph,
                 # adj_links are the links that were changed and need to be updated
                 adj_marker = False
                 adj_links=[]  # specifically for weight_array_iter
-                adj_links_d=[] # specifically for derivative
+                # adj_links_d=[] # specifically for derivative
+
                 for idx, path in enumerate(paths[:-1]):
                     # Determine unique_links between shortest path (path_hat) and current path under investigation
-                    all_links = [item for sublst in zip(path, path_hat) for item in sublst]
-                    unique_links = unique_links = [list(x) for x in set(tuple(x) for x in all_links)]
+                    # Previous incorrect method
+                    # all_links = [item for sublst in zip(path, path_hat) for item in sublst]
+                    # unique_links = [list(x) for x in set(tuple(x) for x in all_links)]
+                    set1 = set(tuple(x) for x in path)
+                    set2 = set(tuple(x) for x in path_hat)
+                    unique_links=[list(x) for x in (set1 - set2)]+[list(x) for x in (set2 - set1)]
                     
                     # calculate numerator of delta_h
                     if sparse_array is True:
@@ -4060,6 +4349,7 @@ def traffic_assignment(G: nx.Graph,
                     den = 0
 
                     # Update link_performance_derivative
+                    # BUG : where does adj_links_d need to be initialized?
                     # Only need to recalculate edges if there have been adjustments made to edges
                     if len(adj_links_d) >= 1:
                         derivative = link_performance_derivative(capacity_array=capacity_array, 
@@ -4081,11 +4371,17 @@ def traffic_assignment(G: nx.Graph,
                     # calculate delta_h
                     delta_h = num/den
                     if delta_h < 0:
-                        # There should never be a negative adj value, if this is printed there is some sort of error that needs to be identified
-                        print('NEGATIVE ADJ')
+                        # There should never be a negative delta_h value, if this is printed there is some sort of error that needs to be ID'd
+                        print(f'NEGATIVE delta_h: {num}/{den}={delta_h}')
                      
                     # adjusted path flow value
                     adj = min(flows[idx], delta_h)
+                    # There should never be a negative adj (i.e., projected delta_h). if this is printed there is some sort of error that needs to be ID'd
+                    if adj < 0:
+                        print(f'NEGATIVE adj! Delta_h:{num}/{den}={delta_h}, flow:{flows[idx]}')
+                        print(unique_links)
+                        print(path)
+                        print(path_hat)
                     if adj > 0:
                         # only need to update weight_array_iter if values actually changed
                         adj_marker=True
@@ -4115,7 +4411,6 @@ def traffic_assignment(G: nx.Graph,
                 # 1. we have multiple paths (captured with the adj_marker)
                 # 2. there was a positive change to a flow (captured with the adj_marker)
                 # And we only need to update the weight_array_iter links that experienced a change
-                
                 if adj_marker is True:
                     weight_array_iter = link_performance_function(capacity_array=capacity_array,
                                                                     flow_array=flow_array,
@@ -4126,7 +4421,7 @@ def traffic_assignment(G: nx.Graph,
                                                                     sparse_array=sparse_array,
                                                                     update_arr=weight_array_iter,
                                                                     update_links=adj_links)      
-
+                
                 # TODO: eliminate paths where flow is 0 -> could incorporate this into loop above 
                 marker=0
                 for flow in flows:
@@ -4134,8 +4429,10 @@ def traffic_assignment(G: nx.Graph,
                         flows.pop(marker)
                         paths.pop(marker)
                     else:
-                        marker+=1    
+                        marker+=1   
              
+            # TODO: To avoid having to calculate this every iteration, if we know we are going to do more, add an if statement to skip 
+            #   for example, only calculate these vars every other iteration, or every five iterations
             # BEGIN NEW SPTT PARALLEL CALC
             # For shortest path travel time calculation (termination criteria)
             SPTT=0  
@@ -4144,11 +4441,11 @@ def traffic_assignment(G: nx.Graph,
             # n = [[int(OD_matrix[n][0]), OD_matrix[n][1], int(OD_matrix[n][2]), 'cost', 'weight_array_iter'] for n in range(0, len(OD_matrix))]
             pool=Poolm(pp)
             results = pool.map(SPTT_parallel, n)
+            pool.close()
+            pool.join()
             for idx, cost in enumerate(results):
                 flow = OD_matrix[idx][1]
                 SPTT += cost*flow
-            pool.close()
-            pool.join()
             # END NEW SPTT PARALLEL CALC
 
             # # calculate  termination criteria variables
@@ -4178,6 +4475,8 @@ def traffic_assignment(G: nx.Graph,
             TSTT_list.append(TSTT)
             SPTT_list.append(SPTT)
             RG_list.append(RG)
+            timeb=time.time()
+            print(f'iter {iter} time: {timeb-timea}')
             iter += 1
 
             # determine if iterations should continue
@@ -4185,7 +4484,7 @@ def traffic_assignment(G: nx.Graph,
                                             iters = iter, 
                                             AEC=AEC,
                                             RG=RG)
-
+            
     elif algorithm == 'bush_based':
         
         # Convert network into a set of bushes for each OD pair
@@ -4924,7 +5223,7 @@ def traffic_assignment(G: nx.Graph,
     # relate flow array back to network
     if sparse_array is True:
         # set background TA flow value and update accordingly
-        nx.set_edge_attributes(G, 0, name='fTA_Flow')
+        nx.set_edge_attributes(G, 0, name='TA_Flow')
         # for i in og_node_list:
         #     for j in og_node_list:
         for i, row in enumerate(flow_array.rows):
@@ -4965,9 +5264,7 @@ def traffic_assignment(G: nx.Graph,
     #TODO:  has to be multidigraph to save properly should adjust save function to represent this requirement
     G_output = nx.MultiDiGraph(G)
 
-    #TODO: Fix outputs - either add save option or remove and keep as seperate function - in scratch. This function should return the graph
-    # save_2_disk(G=G_output, path='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Graphs',
-    #             name='AN_Graph_Traffic_Assignment_No_Inundation')
+    
 
     # delete global variables created for parallel processing
     del capacity_array
