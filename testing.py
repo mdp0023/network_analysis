@@ -48,12 +48,12 @@ aoi_buffer = f'{f_boundaries}/Neighborhood_Network_AOI_Buf_1km.shp'
 res_points_loc = f'{f_res_shp}/Residential_Parcels_Points_Network_AOI.shp'
 food_points_loc = f'{f_food_shp}/Food_Marts_Points_Network_AOI.shp'
 other_points_loc = f'{f_other_shp}/Other_Resource2_Points_Network_AOI.shp'
-other_points_loc2 = f'{f_other_shp2}/Other_Resource_Points_Network_AOI.shp'
+other_points_loc2 = f'{f_other_shp2}/Other_Resource_Points_Network_AOI_edited.shp'
 # Shapefiles of res parcels, food marts, and 2nd resource
 res_parcels = f'{f_res_shp}/Residential_Parcels_Network_AOI.shp'
 food_parcels = f'{f_food_shp}/Food_Marts_Network_AOI.shp'
 other_parcels = f'{f_other_shp}/Other_Resource2_Network_AOI.shp'
-other_parcels2 = f'{f_other_shp2}/Other_Resource_Network_AOI.shp'
+other_parcels2 = f'{f_other_shp2}/Other_Resource_Network_AOI_edited.shp'
 # Inundation raster
 inundation_raster = f'{f_path}/AOI_Inundation.tif'
 # raster = rio.open(inundation_raster)
@@ -96,7 +96,7 @@ other_locs2 = gpd.read_file(other_parcels2)
 # mynet.save_2_disk(G=network, path=f_graphs, name='AOI_Graph')
 
 # read_graph_from_disk
-network = mynet.read_graph_from_disk(path=f_graphs, name='AOI_Graph')
+network = mynet.read_graph_from_disk(path=f_graphs, name='AOI_Graph_Inundated')
 # ox.io.save_graph_geopackage(network, filepath='/home/mdp0023/Desktop/external/Data/Network_Data/AOI_Testing/test')
 # print list of all the edge attributes available to us
 print(list(list(network.edges(data=True))[0][-1].keys()))
@@ -168,7 +168,7 @@ output3d = mynet.min_cost_flow_parcels(network, res_points, [food_points, other_
 # mynet.plot_aoi(network, res_locs, food_locs, edge_width='test_flow1')
 # # mynet.plot_aoi(network, res_locs, [food_locs, other_locs], edge_width='test_flow2')
 # # mynet.plot_aoi(network, res_locs, food_locs, edge_width='test_flow3')
-# # mynet.plot_aoi(network, res_locs, [food_locs, other_locs], edge_width='test_flow4')
+# mynet.plot_aoi(network, res_locs, [food_locs, other_locs], edge_width='test_flow4')
 # plt.show()
 
 # summary_function -> lots can be added to this function in the future
@@ -210,50 +210,73 @@ output3d = mynet.min_cost_flow_parcels(network, res_points, [food_points, other_
 
 
 # # # traffic_assignment
-# # # start=time.time()
 
 output7a = mynet.traffic_assignment(network, 
-                                   res_points, 
-                                   food_points, 
-                                   food_locs, 
+                                    res_points,
+                                    food_points,
+                                    food_locs,
+                                    # G_weight='travel_time',
+                                    G_weight='inundation_travel_time_agr',
+                                    G_capacity='inundation_capacity_agr',
                                    dest_method='multiple',
                                    termination_criteria=['iter',3], 
                                    algorithm='path_based',
-                                   method='CFW',
+                                   method='MSA',
                                    sparse_array=True)
+tstta = [round(num, 6) for num in output7a[2]]
+sptta = [round(num, 6) for num in output7a[3]]
+rga = [round(num, 6) for num in output7a[4]]
+print(rga)
+for u, v, data in network.edges(data=True):
+    data["capacity"] *= 0.005
 
+print('newrun')
+time1=time.time()
 output7b = mynet.traffic_assignment(network,
                                     res_points,
                                     [food_points, other_points, other_points2],
                                     [food_locs, other_locs, other_locs2],
                                     dest_method='multiple',
-                                    termination_criteria=['iter', 3],
+                                    termination_criteria=['iter', 10],
                                     algorithm='path_based',
-                                    method='CFW',
-                                    sparse_array=True)
-
-# end=time.time()
-# print(f"Time to compute: {end-start}")
-
-
-tstta = [round(num, 6) for num in output7a[2]]
-sptta = [round(num, 6) for num in output7a[3]]
-rga = [round(num, 6) for num in output7a[4]]
-
-tsttb = [round(num, 6) for num in output7b[2]]
-spttb = [round(num, 6) for num in output7b[3]]
-rgb = [round(num, 6) for num in output7b[4]]
-
-print(tstta)
-print(sptta)
-print(rga)
-
-print(tsttb)
-print(spttb)
-print(rgb)
+                                    method='MSA',
+                                    sparse_array=True,
+                                    # G_weight='inundation_travel_time_agr',
+                                    # G_capacity='inundation_capacity_agr'
+                                    )
+time2=time.time()
+print(time2-time1)
 
 
-# print(list(list(output7[0].edges(data=True))[0][-1].keys()))
 
-mynet.plot_aoi(output7b[0], res_locs, [food_locs, other_locs, other_locs2], edge_width='TA_Flow')
-plt.show()
+# output6c = mynet.flow_decomposition(output7a[0],
+#                                     res_points,
+#                                     food_points,
+#                                     res_locs,
+#                                     food_locs,
+#                                     dest_method='multiple',
+#                                     G_weight='Weight_Array_Iter',
+#                                     G_capacity='inundation_capacity_agr')
+
+# output6c[2].to_file('/home/mdp0023/Desktop/external/Data/Network_Data/AOI_Testing/decomp_res_test.shp')
+
+
+
+
+# tsttb = [round(num, 6) for num in output7b[2]]
+# spttb = [round(num, 6) for num in output7b[3]]
+# rgb = [round(num, 6) for num in output7b[4]]
+
+# # print(tstta)
+# # print(sptta)
+# # print(rga)
+
+# print(tsttb)
+# print(spttb)
+# print(rgb)
+
+
+# # print(list(list(output7[0].edges(data=True))[0][-1].keys()))
+
+# # mynet.plot_aoi(output7b[0], res_locs, [food_locs, other_locs, other_locs2], edge_width='TA_Flow')
+# # plt.show()
