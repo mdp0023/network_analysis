@@ -10,6 +10,8 @@ import copy
 import math
 import heapq
 from heapq import heappop, heappush
+from itertools import count
+from itertools import islice
 from collections import defaultdict
 import rasterio
 import numpy as np
@@ -33,6 +35,14 @@ from multiprocessing import Pool as Poolm
 from matplotlib.colors import ListedColormap
 from matplotlib_scalebar.scalebar import ScaleBar
 from multiprocessing.pool import ThreadPool as Pool
+
+from networkx.algorithms.connectivity import build_auxiliary_edge_connectivity
+from networkx.algorithms.flow import build_residual_network
+
+
+
+# testing sknetwork for faster shortest path calcualtions
+import sknetwork as skn
 
 from concurrent.futures import ThreadPoolExecutor
 
@@ -1285,7 +1295,6 @@ def plot_aoi(G: nx.Graph,
             resource_parcels: gpd.GeoDataFrame, 
             background_edges: gpd.GeoDataFrame=None,
             edge_width: str = None, 
-            edge_width_weight: int=1,
             edge_color: str = None,
             bbox: gpd.GeoDataFrame = None, 
             loss_access_parcels: gpd.GeoDataFrame = None, 
@@ -1295,7 +1304,8 @@ def plot_aoi(G: nx.Graph,
             save_loc: str = None,
             decomp_flow: bool = False,
             rotation=False,
-            bg_water=None):
+            bg_water=None,
+            default=True):
     '''
     Create a plot with commonly used features.
 
@@ -1329,12 +1339,18 @@ def plot_aoi(G: nx.Graph,
     :type save_loc: string
     :param decomp_flow: if True, plot residential parcels with color ramp symbolizing travel time (*Default=False*)
     :type decomp_flow: bool
+    :param default: if true, creates fig and ax object itself. if not, input [fig, ax object]
+    type default: bool or list of [fig, ax] object
 
     :return: **fig**, the produced figure
     :rtype: matplotlib figure
 
     '''
-    
+    parcel_linewidth=0.5
+    linewidth=0.5
+    linewidth_max=2
+
+
     # convert graph to gdf of edges and nodes
     G_gdf_edges = ox.graph_to_gdfs(G=G, nodes=False)
     G_gdf_nodes = ox.graph_to_gdfs(G=G, edges=False)
@@ -1374,18 +1390,21 @@ def plot_aoi(G: nx.Graph,
                         total_bounds[2],
                         total_bounds[0])
 
-        
-
-    # create subplot with background color and remove axis
-    fig, ax = plt.subplots(facecolor='white', figsize=(12,12))
-    # fig.set_facecolor('none')
-    # Hide X and Y axes label marks
-    ax.xaxis.set_tick_params(labelbottom=False)
-    ax.yaxis.set_tick_params(labelleft=False)
-    # Hide X and Y axes tick marks
-    ax.set_xticks([])
-    ax.set_yticks([])
-    plt.axis('off')
+    if default is True:
+        # create subplot with background color and remove axis
+        fig, ax = plt.subplots(facecolor='white', figsize=(12,12))
+        # fig.set_facecolor('none')
+        # Hide X and Y axes label marks
+        ax.xaxis.set_tick_params(labelbottom=False)
+        ax.yaxis.set_tick_params(labelleft=False)
+        # Hide X and Y axes tick marks
+        ax.set_xticks([])
+        ax.set_yticks([])
+        plt.axis('off')
+    
+    else:
+        fig=default[0]
+        ax=default[1]
 
     # set facecolor
     ax.set_facecolor('whitesmoke')
@@ -1436,13 +1455,15 @@ def plot_aoi(G: nx.Graph,
             res_parcels_rot.plot(ax=ax, color='tan')
     
     # plot the resource parcels
-    if isinstance(resource_parcels, gpd.GeoDataFrame):
+    if resource_parcels is None:
+        pass
+    elif isinstance(resource_parcels, gpd.GeoDataFrame):
         if rotation is False:        
-            resource_parcels.plot(ax=ax, color='mediumseagreen', edgecolor='darkgreen', linewidth=0.5)
+            resource_parcels.plot(ax=ax, color='mediumseagreen', edgecolor='darkgreen', linewidth=parcel_linewidth)
         else:
             resource_parcels_rot = gpd.GeoSeries(g for g in resource_parcels['geometry'])
             resource_parcels_rot = resource_parcels_rot.rotate(rotation, origin=center_point)
-            resource_parcels_rot.plot(ax=ax, color='mediumseagreen', edgecolor='darkgreen', linewidth=0.5)
+            resource_parcels_rot.plot(ax=ax, color='mediumseagreen', edgecolor='darkgreen', linewidth=parcel_linewidth)
     elif isinstance(resource_parcels, list):
         colors = ['#ff7f00', '#1f78b4',  '#33a02c','#b2df8a',
                   '#fb9a99', '#e31a1c', '#fdbf6f', '#a6cee3']
@@ -1450,11 +1471,12 @@ def plot_aoi(G: nx.Graph,
                     '#9b0806','#5b0a0b','#905202','#265b78']
         for i, parcel in enumerate(resource_parcels):
             if rotation is False:        
-                parcel.plot(ax=ax, color=colors[i], edgecolor=edgecolors[i], linewidth=0.5)
+                parcel.plot(
+                    ax=ax, color=colors[i], edgecolor=edgecolors[i], linewidth=parcel_linewidth)
             else:
                 parcel_rot = gpd.GeoSeries(g for g in parcel['geometry'])
                 parcel_rot = parcel_rot.rotate(rotation, origin=center_point)
-                parcel_rot.plot(ax=ax, color=colors[i], edgecolor=edgecolors[i], linewidth=0.5)
+                parcel_rot.plot(ax=ax, color=colors[i], edgecolor=edgecolors[i], linewidth=parcel_linewidth)
 
     # option to plot loss of access parcels
     if loss_access_parcels is None:
@@ -1473,36 +1495,21 @@ def plot_aoi(G: nx.Graph,
         G_gdf_edges = ox.graph_to_gdfs(G=G, nodes=False)
         if rotation is False:
             G_gdf_edges.plot(ax=ax, edgecolor='lightgray',
-                             linewidth=1, zorder=-1)
+                             linewidth=linewidth, zorder=-1)
         else:
             G_gdf_edges_rot = gpd.GeoSeries(g for g in G_gdf_edges['geometry'])
             G_gdf_edges_rot = G_gdf_edges_rot.rotate(rotation, origin=center_point)
-            G_gdf_edges_rot.plot(ax=ax, edgecolor='lightgray', linewidth=1,zorder=-1)
+            G_gdf_edges_rot.plot(ax=ax, edgecolor='lightgray', linewidth=linewidth,zorder=-1)
 
-        # ox.plot.plot_graph(G,
-        #                     ax=ax,
-        #                     node_size=0, node_color='black',
-        #                     edge_color='lightgray',
-        #                     show=False,
-        #                     edge_linewidth=1,
-        #                     bbox=total_bounds)
     else:
         G_gdf_edges_c = ox.graph_to_gdfs(G=background_edges, nodes=False)
         if rotation is False:
-            G_gdf_edges_c.plot(ax=ax, edgecolor='lightgray', linewidth=1,zorder=-1)
+            G_gdf_edges_c.plot(ax=ax, edgecolor='lightgray', linewidth=linewidth,zorder=-1)
         else:
             G_gdf_edges_rot = gpd.GeoSeries(
                 g for g in G_gdf_edges_c['geometry'])
             G_gdf_edges_rot = G_gdf_edges_rot.rotate(rotation, origin=center_point)
-            G_gdf_edges_rot.plot(ax=ax, edgecolor='lightgray', linewidth=1,zorder=-1)
-
-        # ox.plot.plot_graph(background_edges,
-        #                     ax=ax,
-        #                     node_size=0, node_color='black',
-        #                     edge_color='lightgray',
-        #                     show=False,
-        #                     edge_linewidth=1,
-        #                     bbox=total_bounds)
+            G_gdf_edges_rot.plot(ax=ax, edgecolor='lightgray', linewidth=linewidth,zorder=-1)
 
     # plot edges based on color (typically max inundation on the road)
     if edge_color is None:
@@ -1545,19 +1552,11 @@ def plot_aoi(G: nx.Graph,
         G_gdf_edges = ox.graph_to_gdfs(G=G, nodes=False)
         if rotation is False:
             G_gdf_edges.plot(ax=ax, edgecolor=color_series,
-                             linewidth=edge_width_weight)
+                             linewidth=linewidth)
         else:
             G_gdf_edges_rot = gpd.GeoSeries(g for g in G_gdf_edges['geometry'])
             G_gdf_edges_rot = G_gdf_edges_rot.rotate(rotation, origin=center_point)
-            G_gdf_edges_rot.plot(ax=ax, edgecolor=color_series, linewidth=1)
-
-        # ox.plot_graph(G,
-        #               ax=ax,
-        #               node_size=0, node_color='black',
-        #               edge_color=color_series,
-        #               show=False,
-        #               edge_linewidth=1.,
-        #               bbox=total_bounds)
+            G_gdf_edges_rot.plot(ax=ax, edgecolor=color_series, linewidth=linewidth)
 
     # plot edges based on width
     if edge_width is None:
@@ -1571,8 +1570,8 @@ def plot_aoi(G: nx.Graph,
         # unique_flows.pop(0)
         old_min = min(unique_flows)
         old_max = max(unique_flows)
-        new_min = 1
-        new_max = 5
+        new_min = linewidth
+        new_max = linewidth_max
 
         # TODO: could add user inputs to assign values here
         # plotting each scaled width is too much, must bin into groups of 100
@@ -1645,12 +1644,11 @@ def plot_aoi(G: nx.Graph,
     if scalebar is False:
         pass
     else:
-        ax.add_artist(ScaleBar(1,
-                                # length_fraction=0.2,
+        scale=ax.add_artist(ScaleBar(1,
                                 frameon=True,
                                 box_color='lightgray',
                                 location='lower left'))
-
+        scale.zorder=10000
         # to determine width and length of head, need to convert display coordinates to data coordinates
         # display coordinates is in inches
         # want an arrow that has a width of half an inch and a length of 1 inch
@@ -1659,9 +1657,9 @@ def plot_aoi(G: nx.Graph,
         head_width = trans_size[1][0]-trans_size[0][0]
         head_length = trans_size[1][1]-trans_size[0][1]
 
-        x_tail = 0.95
+        x_tail = 0.90
         y_tail = 0.04
-        x_head = 0.95
+        x_head = 0.90
         y_head = 0.105
         old_center = ((x_tail+x_head)/2,(y_tail+y_head)/2)
 
@@ -1701,8 +1699,7 @@ def plot_aoi(G: nx.Graph,
                     textcoords='axes fraction',
                     va='bottom', 
                     ha='center',
-                    fontsize=18)
-
+                    fontsize=14)
 
     if save_loc is None:
         pass
@@ -1920,7 +1917,7 @@ def flow_decomposition(G: nx.Graph,
                        G_demand: str ='demand', 
                        G_capacity: str ='capacity', 
                        G_weight: str ='travel_time', 
-                       dest_method: str = 'single') -> tuple[dict, dict, gpd.GeoDataFrame, gpd.GeoDataFrame]:
+                       dest_method: str = 'single'):
     '''
     Given a network, G, decompose the maximum flow (w/ minimum cost) into individual flow paths.
 
@@ -2302,8 +2299,6 @@ def flow_decomposition(G: nx.Graph,
 
         for idx, dest_point in enumerate(dest_points):
             
-           
-
             if dest_method=='single':
                 # Run max_flow_parcels to get flow dictionary
                 flow_dict, flow_cost, max_flow, access = max_flow_parcels(G=G, 
@@ -2634,7 +2629,8 @@ def flow_decomposition(G: nx.Graph,
 
 
 
-# HELPER FUNCTIONS - all predominently utilized in traffic assignment
+# HELPER FUNCTIONS:
+#  utilized in traffic assignment
 
 def shortestPath(origin: int, 
                  capacity_array: np.array, 
@@ -2716,7 +2712,8 @@ def shortestPath_heap(origin: int,
                       weight_array: Union[np.array, sparse.lil_array], 
                       adjlist: list[list], 
                       destination: int = False, 
-                      sparse_array: bool = True):
+                      sparse_array: bool = True,
+                      limit=np.inf):
     """
     This method finds the shortest path from origin to all other nodes in the network. 
     Uses a binary heap priority que in an attempt to speed up the shortestPath function. Uses Dijkstra's algorithm and built in python function heapq.
@@ -2782,6 +2779,7 @@ def shortestPath_heap(origin: int,
     #             heapq.heappush(pq, (new_cost, neighbor))
     # chat gpt version end
 
+
     # # ORIGINAL algorithm
     # # Need the number of nodes for calculations
     # numnodes = np.shape(capacity_array)[0]
@@ -2838,21 +2836,23 @@ def shortestPath_heap(origin: int,
 
     # backnode = np.asarray(backnode)
     # costlabel = np.asarray(costlabel)
-
     # backnodes equal to list indicating previous node in shortest path
     # costlabel is list of costs associated with each node
-   
-    # UNTESTED: network x conversion
-    # new_g = nx.from_scipy_sparse_array(weight_array, create_using=nx.DiGraph)
-    # backnode, costlabel = nx.dijkstra_predecessor_and_distance(new_g,origin,weight='weight')
-    # backnode= nx.dijkstra_path(new_g,origin,destination)
-    # costlabel=nx.dijkstra_path_length(new_g,origin)
+    # # ORIGINAL algorithm end
+
 
     #  scipy sparse function
     # BUG: Sometimes dijkstras gets caught in infinite loop -> not sure why 
     # Bellman-Ford works but its incredibly slow
-    costlabel,backnode = sparse.csgraph.shortest_path(weight_array,indices=origin,return_predecessors=True,method='D')
-    # costlabel,backnode = sparse.csgraph.dijkstra(weight_array,indices=origin,return_predecessors=True)
+    # costlabel,backnode = sparse.csgraph.shortest_path(weight_array,
+    #                                                   indices=origin,
+    #                                                   return_predecessors=True,
+    #                                                   method='D')
+    costlabel,backnode = sparse.csgraph.dijkstra(weight_array,
+                                                 indices=origin,
+                                                 return_predecessors=True,
+                                                 limit=limit)
+    
     return (backnode, costlabel)
 
 def pathTo(backnode, costlabel, origin, destination):
@@ -2942,7 +2942,7 @@ def SPTT_parallel(n):
                                                     capacity_array=n[5],
                                                     weight_array=n[6],
                                                     adjlist=adjlist,
-                                                    destination=n[2])
+                                                    destination=n[2])                                              
     elif n[4] == 'weight_array_iter':
         if len(n) == 5:
             backnode, costlabel = shortestPath_heap(origin=n[0],
@@ -2976,7 +2976,274 @@ def SPTT_parallel(n):
         if n[3] == 'path_cost_backnode':
             return path, cost, backnode
     
-# PARALLELIZATION HELPER FUNCTIONS USED IN TRAFFIC ASSIGNMENT
+
+# PARALLELIZATION HELPER FUNCTION FOR REDUNDANCY METRICS
+def redundancy_parallel(n):
+    """
+    Calculate individual redundancy score for
+    n is OD_matrix where:
+        n[0]: origin
+        n[1]: nested list of destinations (by resource)
+
+    need global variables as well:
+        G_copy:             copy of network Graph
+        G_weight_copy       copy of weight array 
+        inc_copy            increment of isochrone
+        max_length_copy     maximum acceptable travel time
+    """
+
+    source=n[0]
+    targets=n[1]
+
+    # calculate shortest path matrix for source
+    distance = nx.single_source_dijkstra_path_length(G=G_copy, source=source, weight=G_weight_copy)
+
+    # initialize output [source, target, val, resource number]
+    output=[]
+    # find distances
+    for i, resource in enumerate(targets):
+        for target in resource:
+            length = distance.get(target)
+            # if no path exists, give a score of 0
+            if length is None:
+                output.append([source,target,0, int(i)])
+            # if path does exist,
+            else:
+                # determine score based on determined length
+                # if length is greater than maximum
+                if length > max_length_copy:
+                    output.append([source, target, 0, int(i)])
+                # if length is equal to the maximum length
+                elif length == max_length_copy:
+                    output.append([source, target, 1, int(i)])
+                else:
+                    # round to next highest multiple of increment
+                    val = inc_copy * math.ceil(length/inc_copy)
+                    # subtract from max length, divide by increment to determine score
+                    val = (max_length_copy-val)/inc_copy
+                    output.append([source,target,val,int(i)])
+    return output
+
+
+def edge_disjoint_paths(n):
+    """
+    Parallel processing of edge_disjoint paths for network redundancy metric
+    n: origin
+    output takes form of:
+    [origin, score for resource1, score for resource2, etc.]
+    """
+
+    # first find the neighbors of neighbors of origins
+    origin_nn=[]
+    origin_n1=[node for node in G_copy.neighbors(n)]
+    origin_nn = origin_nn + origin_n1
+    for node in origin_n1:
+        origin_n2=[neighbor for neighbor in G_copy.neighbors(node)]
+        # if origin is a neighbor remove it
+        try: 
+            origin_n2.remove(n)
+        except ValueError:
+            pass
+        origin_nn += origin_n2
+        
+
+        # # attempt at neighbors-neighbors-neighbors
+        # for node2 in origin_n2:
+        #     origin_n3 = [neighbor for neighbor in G_copy.neighbors(node2)]
+        #     # if origin is a neighbor remove it
+        #     try: 
+        #         origin_n3.remove(n)
+        #     except ValueError:
+        #         pass
+        #     origin_nn += origin_n3
+
+    # remove duplicates 
+    origin_nn = list(set(origin_nn))
+
+    # add artificial edges from origin to the neighbors-of-neighbors values
+    for node in origin_nn:
+        kwargs = {G_weight_copy: 1,
+                  G_capacity_copy: 999999999}
+        G_copy.add_edge(n, node, **kwargs)
+
+    H = build_auxiliary_edge_connectivity(G_copy)
+    R = build_residual_network(H, 'capacity')
+
+    output=[]
+    # for each resource type,
+    for idx, node in enumerate(sink_nodes_copy):
+        output.append(0)
+
+        # if edge exists between origin and resource than they are connected and should be given maximum score
+        # if G_copy.has_edge(n,node):
+        # if edge resource node is in nn, then they are connected
+        if node in origin_nn:
+            # will filter out values that are -1 and set to the maximum
+            output[idx]=-1
+        else:
+            try:
+                k = len(list(nx.edge_disjoint_paths(G_copy,n,node, auxiliary=H,residual=R)))
+            # if no path exists,
+            except nx.NetworkXNoPath:
+                k=0
+            output[idx]=k
+    output.insert(0, n)
+
+    return output
+
+
+# Can probably remove below functions
+def get_path_length(G, path, weight):
+    length = 0
+    if len(path) > 1:
+        for i in range(len(path) - 1):
+            u = path[i]
+            v = path[i + 1]
+
+            length += G[u][v][weight]
+    return (length)
+
+def k_shortest_paths(G, source, target, k, weight=None):
+    return list(islice(nx.shortest_simple_paths(G, source, target, weight=weight), k))
+
+def k_shortest_paths(n):
+    """
+    #TODO:
+    Has major bugs needs to be addressed
+
+    Calculate the number of viable paths
+
+    # TODO: Needs to be much better documented, at a later date. 
+    n is array version of OD_matrix where:
+        n[0]: source
+        n[1]: target
+        n[2]: shared nodes for that resource
+    """
+    source=n[0]
+    target=n[1]
+    shared_nodes=n[2]
+
+    # # k-shortest paths
+    # TODO: make a seperate function
+    # # determine if path exists
+    # if nx.has_path(G_copy,source,target) is False:
+    #     pass
+    # else:
+    #     # calculate shortest path
+    #     cost = nx.shortest_path_length(G_copy,
+    #                                     source=source,
+    #                                     target=target,
+    #                                     weight=G_weight_copy)
+
+    #     # if the shortest path cost is greater than acceptable cost:
+    #     if cost > max_tt_copy:
+    #         output = [source, target, 0]
+
+    #     # if source shares a node with that resources location, set to max paths
+    #     if cost <= max_tt_copy and source in shared_nodes:
+    #          output = [source, target, max_paths_copy]
+
+    #     # all other paths, which should have acceptable length and not share node 
+    #     if cost <= max_tt_copy and source not in shared_nodes:
+    #         # calculate k shortest paths (k == max_paths_copy)
+    #         s_paths=[]
+    #         for s_path in k_shortest_paths(G_copy, source, target, max_paths_copy, weight=None):
+    #             s_paths.append(s_path)
+    #         #total number of acceptable paths var
+    #         num_paths = max_paths_copy
+    #         # in reverse order, find how many of the calculated paths have an acceptable time
+    #         for s_path in reversed(s_paths):
+    #             cost = nx.path_weight(G_copy, s_path, weight=G_weight_copy)
+    #             if cost <= max_tt_copy:
+    #                 output = [source, target, num_paths]
+    #                 break
+    #             else:
+    #                 num_paths-=1
+    #         output=[source, target,num_paths]
+    
+    # old k-shortest path method, native python function
+    # # a source must have at least one acceptable path to be passed to the k-shortest path algorithm
+    # # a path is acceptable if it is below the maximum allowable travel time 
+    # if cost <= max_tt_copy and source in shared_nodes:
+    #     output=[source, target, max_paths_copy]
+    # elif cost <= max_tt_copy and source not in shared_nodes:
+    #     length, path = nx.single_source_dijkstra(G_copy, source, target, weight=G_weight_copy)
+    #     lengths = [length]
+    #     paths = [path]
+    #     c = count()
+    #     B = []
+    #     G_original = G_copy.copy()
+    #     i = 1
+    #     iter = True
+
+    #     while iter is True:
+    #         for j in range(len(paths[-1]) - 1):
+
+    #             spur_node = paths[-1][j]
+    #             root_path = paths[-1][:j + 1]
+
+    #             edges_removed = []
+    #             for c_path in paths:
+    #                 if len(c_path) > j and root_path == c_path[:j + 1]:
+    #                     u = c_path[j]
+    #                     v = c_path[j + 1]
+    #                     if G_copy.has_edge(u, v):
+    #                         # edge_attr = G.edge[u][v]
+    #                         edge_attr = G_copy.get_edge_data(u, v)
+    #                         G_copy.remove_edge(u, v)
+    #                         edges_removed.append((u, v, edge_attr))
+
+    #             for n in range(len(root_path) - 1):
+    #                 node = root_path[n]
+    #                 # out-edges
+    #                 # for u, v, edge_attr in G.edges_iter(node, data=True):
+    #                 edgelist = list(G_copy.edges(node, data=True))
+    #                 for u, v, edge_attr in edgelist:
+    #                     G_copy.remove_edge(u, v)
+    #                     edges_removed.append((u, v, edge_attr))
+
+    #                 edgelist_in = list(G_copy.in_edges(node, data=True))
+    #                 if G_copy.is_directed():
+    #                     # in-edges
+    #                     for u, v, edge_attr in edgelist_in:
+    #                         # for u, v, edge_attr in G.edges(data=True):
+    #                         G_copy.remove_edge(u, v)
+    #                         edges_removed.append((u, v, edge_attr))
+
+    #             try:
+    #                 spur_path_length, spur_path = nx.single_source_dijkstra(
+    #                     G_copy, spur_node, target, weight=G_weight_copy)
+    #                 if target in spur_path:
+    #                     total_path = root_path[:-1] + spur_path
+    #                     total_path_length = get_path_length(
+    #                         G_original, root_path, G_weight_copy) + spur_path_length
+    #                     heappush(B, (total_path_length, next(c), total_path))
+    #             except:
+    #                 pass
+
+    #             for e in edges_removed:
+    #                 u, v, edge_attr = e
+    #                 G_copy.add_edge(u, v, **edge_attr)
+
+    #         if B:
+    #             (l, _, p) = heappop(B)
+    #             lengths.append(l)
+    #             paths.append(p)
+    #         else:
+    #             break
+    #         if l <= max_tt_copy:
+    #             i += 1
+    #         else:
+    #             iter = False
+    #         if len(lengths) >= max_paths_copy:
+    #             iter = False
+        
+    #     output = [source, target, len(lengths)]
+    # else:
+    #     # still want to keep track of 0s
+    #     output = [source, target, 0]
+    # return(output)
+
 
 ###### HELPER FUNCTIONS CURRENTLY NOT BEING USED ######
 def maxFlow(source, sink, numnodes, capacity_array, weight_array):
@@ -3388,11 +3655,12 @@ def traffic_assignment(G: nx.Graph,
             #   (2): By having artifical route, can always send max flow w/o considering if accessible - if path goes through artifical link, than no access when cost is arbitrarily high
             # initialize OD_matrix        
             OD_matrix = np.empty([len(unique_origin_nodes)*len(unique_dest_nodes_list),3])
+            
             indexList=[]
             for i, resource in enumerate(unique_dest_nodes_list):
                 for idx,x in enumerate(unique_origin_nodes):
                     # BUG: before adding to OD matrix, determine if a path even exists
-                    if nx.has_path(G, x, super_sink) is False:
+                    if nx.has_path(G, x, super_sink+1) is False:
                         # save index to be removed
                         indexList.append(idx+i*len(unique_origin_nodes))
                         pass
@@ -3410,8 +3678,6 @@ def traffic_assignment(G: nx.Graph,
             # delete OD_matrix rows that we no longer need - where values are 0 or nans
             # indexList = np.where(~OD_matrix.any(axis=1))[0]
             OD_matrix = np.delete(OD_matrix, indexList, axis=0)
-            
-
 
             # d. Sort nodes in proper order
             #   This should in theory then preserve saying node '2' in array is node '2' in network g, especially with adding the artifical node, 0
@@ -3463,15 +3729,13 @@ def traffic_assignment(G: nx.Graph,
         addition = sparse.csr_array(([1 for i in temp_cap.data], temp_cap.indices, temp_cap.indptr))
         temp_cap = None
         # TODO: COULD also precompute capacity**beta_array, which is used in link_performance_function_derivative
-
-        
+    
     # set variables
     sum_d = positive_demand                             # sum of the demand
     num_nodes = capacity_array.shape[0]                  # number of nodes
     node_list = [num for num in range(0, num_nodes)]    # list of all nodes
     pp=8                                                # set parallel processing variables
     
-
     # increase the factor of the weight array
     weight_array=weight_array.multiply(100)
     ####################################################################################################################
@@ -4148,7 +4412,6 @@ def traffic_assignment(G: nx.Graph,
             # paths_array[x][2]: [list of flows (associated with paths)]
         paths_array = []
 
-        
         # populate paths_array matrix
         # BEGIN PARALLEL PROCESS
         # n = [origin, flow, destination, what to return, which weight array to use]
@@ -4171,37 +4434,9 @@ def traffic_assignment(G: nx.Graph,
                     flow_array[i[0]][i[1]] += flow
             # append the paths_array
             paths_array.append([[origin,destination],[path],[flow]])
-        
         # END PARALLEL PROCESS
 
-        # # BEGIN UNPARALLELED PROCESS
-        # for OD_pair in OD_matrix:
-        #     origin = OD_pair[0].astype(int)
-        #     flow = OD_pair[1]
-        #     destination = OD_pair[2].astype(int)
-        #     # Calculate shortest path for OD pair
-        #     backnode, costlabel = shortestPath_heap(origin=origin, 
-        #                                             capacity_array=capacity_array, 
-        #                                             weight_array=weight_array, 
-        #                                             adjlist=adjlist,
-        #                                             sparse_array=sparse_array)
-        #     path, cost = pathTo_mod(backnode=backnode, 
-        #                                 costlabel=costlabel, 
-        #                                 origin=origin, 
-        #                                 destination=destination)
-
-        #     # update the flow array in order to update the weight array
-        #     for i in path:
-        #         if sparse_array is True:
-        #             flow_array[i[0],i[1]]+=flow
-        #         else:
-        #             flow_array[i[0]][i[1]]+=flow
-        #     # append the paths_array
-        #     paths_array.append([[origin,destination],[path],[flow]])
-        # # END UNPARALLED PROCESS
-
-
-        # Initaite the weight_array_iter
+        # Initiate the weight_array_iter
         weight_array_iter = link_performance_function(capacity_array=capacity_array,
                                                         flow_array=flow_array,
                                                         weight_array=weight_array,
@@ -4216,7 +4451,7 @@ def traffic_assignment(G: nx.Graph,
         # BEGIN PARALLEL PROCESS
         # n = [origin, flow, destination, what to return, which weight array to use]
         n = [[int(OD_matrix[n][0]), OD_matrix[n][1], int(OD_matrix[n][2]), 'cost', 'weight_array_iter',capacity_array, weight_array_iter] for n in range(0, len(OD_matrix))]
-        # n = [[int(OD_matrix[n][0]), OD_matrix[n][1], int(OD_matrix[n][2]), 'cost', 'weight_array_iter'] for n in range(0, len(OD_matrix))
+
         pool=Poolm(pp)
         results = pool.map(SPTT_parallel, n)
         pool.close()
@@ -4226,38 +4461,6 @@ def traffic_assignment(G: nx.Graph,
             flow = OD_matrix[idx][1]
             SPTT += cost*flow
         # END PARALLEL PROCESS
-        
-        # # # BEGIN UNPARALLELED PROCESS
-        # SPTT = 0
-        # for idx, x in enumerate(OD_matrix):
-            
-        #     origin = int(x[0])
-        #     destination = int(x[2])
-        #     flow = x[1]
-        #     # BUG without rounding, this is where reduced capacity test fails
-        #     # if idx==19:
-        #     #     print(origin)
-        #     #     print(destination)
-        #     #     print(flow)
-            
-        #     # Calculate shortest paths
-        #     backnode, costlabel = shortestPath_heap(origin=origin, 
-        #                                             capacity_array=capacity_array, 
-        #                                             weight_array=weight_array_iter, 
-        #                                             adjlist=adjlist,
-        #                                             sparse_array=sparse_array)
-        #     # don't actually need shortest path, just need the cost of the path
-        #     cost = costlabel[destination]
-        #     # BUG without rounding, this is where reduced capacity test fails
-        #     # if idx == 19:
-        #     #     print(cost)
-        #     #     path=pathTo_mod(backnode, costlabel, origin, destination)[0]
-        #     #     print(path)
-        #     #     for link in path:
-        #     #         print(weight_array_iter[link[0],link[1]])
-        #     # For shortest path travel time (SPTT) calculation 
-        #     SPTT += cost*flow
-        # # END UNPARALLELED PROCESS
 
         # termination criteria
         TSTT = np.sum(np.multiply(flow_array, weight_array_iter))
@@ -4295,15 +4498,27 @@ def traffic_assignment(G: nx.Graph,
                 destination = OD_pair[0][1]
                 paths = OD_pair[1]
                 flows = OD_pair[2]
-                # print(f'origin {origin}')
+
+                # calculate the current cost of known paths to set as limit of new shortest paths
+                new_limits=[np.inf]
+                for known_path in paths:
+                    value=0
+                    for edges in known_path:
+                        value += weight_array_iter[edges[0],edges[1]]
+                    new_limits.append(value)
+                limit = np.min(new_limits)
+                # limit=np.inf
+
                 # # Find the new shortest path 
                 backnode, costlabel = shortestPath_heap(origin=origin, 
                                                         capacity_array=capacity_array, 
                                                         weight_array=weight_array_iter, 
                                                         adjlist=adjlist,
                                                         sparse_array=sparse_array,
-                                                        destination=destination)
-
+                                                        destination=destination,
+                                                        limit=limit)
+                
+                
                 path_hat, cost_hat = pathTo_mod(backnode=backnode, 
                                                 costlabel=costlabel, 
                                                 origin=origin, 
@@ -4430,8 +4645,10 @@ def traffic_assignment(G: nx.Graph,
                         paths.pop(marker)
                     else:
                         marker+=1   
-             
-            # TODO: To avoid having to calculate this every iteration, if we know we are going to do more, add an if statement to skip 
+
+
+            time1=time.time()
+            # TODO: To avoid having to calculate this every iteration, if we know we are going to do more, add if statement to skip 
             #   for example, only calculate these vars every other iteration, or every five iterations
             # BEGIN NEW SPTT PARALLEL CALC
             # For shortest path travel time calculation (termination criteria)
@@ -4447,6 +4664,8 @@ def traffic_assignment(G: nx.Graph,
                 flow = OD_matrix[idx][1]
                 SPTT += cost*flow
             # END NEW SPTT PARALLEL CALC
+            time2=time.time()
+            print(time2-time1)
 
             # # calculate  termination criteria variables
             # SPTT = 0
@@ -5264,8 +5483,6 @@ def traffic_assignment(G: nx.Graph,
     #TODO:  has to be multidigraph to save properly should adjust save function to represent this requirement
     G_output = nx.MultiDiGraph(G)
 
-    
-
     # delete global variables created for parallel processing
     del capacity_array
     del weight_array
@@ -5275,3 +5492,357 @@ def traffic_assignment(G: nx.Graph,
 
 
     return G_output, AEC_list, TSTT_list, SPTT_list, RG_list, iter
+
+
+def redundancy_metric(G,
+                      res_points: gpd.GeoDataFrame,
+                      res_parcels: gpd.GeoDataFrame,
+                      dest_points: list[gpd.GeoDataFrame],
+                      dest_parcels: list[gpd.GeoDataFrame],
+                      inc=10,
+                      max_length=180,
+                      G_capacity: str = 'capacity', 
+                      G_weight: str = 'travel_time',
+                      norm=True):
+    """
+    Calculates the individual network redundancy metric.
+
+    This metric is based on the k-shortest path algorithm. The k-shortest paths are calculated for each residential parcel, up until the time to go from the origin to destination is within a specific "time elongation factor" of the shortest routing time. The time-elongation factor default is 1.6 (i.e., the longest acceptable time to reach a resource can be, at most, X1.6 the shortest available time). See research for more (https://doi.org/10.1016/j.trd.2022.103275).
+
+    The final metric quantified as follows:
+        -determine number of paths that go to each specific resource location (e.g., grocery store 1, grocery store 2, etc.)
+        -multiply number of paths to each specific resource location by the number of resource locations that can be reached (e.g., if a person can go to 2 different locations, multiply the number of paths to each store by 2)
+        -sum the value across all the resources for a final score
+        -repeat for each resource type
+
+    FOR NOW: Assuming multiple list of destinations and nearest_nodes_vertices, can add other functionality later
+    
+    #TODO: units check for inc and max_length
+    # inc: incremental length for each iterative isoline for scoring purposes
+    # max_length: maximimum allowable travel time
+    # norm: normalize each resources travel times before summation, to balance effects of resource with numerous locations vs. those with few 
+    """
+
+
+
+    # Convert graph to digraph format
+    G = nx.DiGraph(G)
+
+    # Travel times must be whole numbers -  round values up to nearest whole number
+    for x in G.edges:
+        G.edges[x][G_weight] = math.ceil(G.edges[x][G_weight])
+
+    # Begin OD-matrix construction
+        # takes form of [origin, destination, minimum cost]
+        # TODO: This is heavily copied from traffic_assignment function - should consider putting all in a seperate helper 
+        # steps are as follows:
+            #a. determine sources and sinks
+            #b. add artifical edges
+            #c. create OD-matrix
+    
+    # The OD-matrix needs include paths from all origins to those destinations that are within the time-elongation factor of the shortest path time
+    # What this means, is that each resource option that is within time_elongation factor of the absolute shortest path, needs an entry in OD-matrix
+
+    # Set variables that will be used as constants throughout algorithm - set keeping int32 byte criteria in mind
+    artificial_weight_min=1
+    artificial_capacity = 999999999
+
+    # a. Determine sources and sinks
+    G, unique_origin_nodes, unique_dest_nodes_list, positive_demand, shared_nodes, res_points, dest_parcels, dest_points = nearest_nodes_vertices(G=G, res_points=res_points, dest_parcels=dest_parcels, dest_points=dest_points, G_demand='demand')
+
+    # b_2. Add artifical edges from vertices around destinations to aggregate points than to artifical sink with 0 cost and max capacity
+    # This is to allow minimum cost routing to whatever resource - destination of OD pair which can change based on cost
+    # identify the destination nodes, and create artifical sink edges
+    # need to relate the nodes that are nearest to corners of parcels with the dest_points to associate the appropriate capacity to 
+    # artificial node id tracker - useful in maintianing compatability with dtype
+    dest_node_ids=99999998
+
+    # need a list of the sink nodes for each resource
+    sink_nodes=[]
+
+    for i, parcels in enumerate(dest_parcels):
+        #add new entry to sink_nodes
+        sink_nodes.append([])
+        for idx, dest_parcel in parcels.iterrows():
+            dest_node = dest_points[i][dest_points[i].geometry.within(dest_parcel.geometry)]
+            #since we could have multiple dest nodes within a single boundary (multiple resources located at same parcel) need to iterate through dest_node
+            for a, node in dest_node.iterrows():
+                dest_node_ids-=1
+                # add dest_node_ids to the sink_nodes list
+                sink_nodes[i].append(dest_node_ids)
+                # add the dest node to the graph 
+                G.add_nodes_from([(dest_node_ids, {'demand': 0})])
+
+                # add links from nearest intersections to parcel centroid
+                for nearest_intersection in unique_dest_nodes_list[i][idx]:
+                    kwargs = {G_weight: artificial_weight_min, G_capacity: artificial_capacity}
+                    G.add_edge(nearest_intersection, dest_node_ids, **kwargs)
+    
+    # c. Create OD_matrix 
+    # create redundnacy_dictionary output
+    redundancy_dict = {}
+    output_dict={}
+
+    # OD_matrix needs to contain path from origin to specific resource location (not just super_sink)
+    # this way we can assess redundancy to specific resource locations, not just the closest
+
+    # create copies of G, G_weight, and other intput variables to make global for parallelization
+    global G_copy
+    global G_weight_copy
+    global inc_copy
+    global max_length_copy
+    G_copy = copy.deepcopy(G)
+    G_weight_copy = copy.deepcopy(G_weight)
+    inc_copy=copy.deepcopy(inc)
+    max_length_copy=copy.deepcopy(max_length)
+
+
+    # need to stop calculating shortest path for each and every Origin-Destionation
+    # Instead, just find shortest path from origin to all destinations, find cost of specific paths, and that's it
+
+    # initialize OD_matrix: origin, sink_nodes
+    OD_matrix = []
+
+    # for each origin
+    for origin in unique_origin_nodes:
+        OD_matrix.append([origin,sink_nodes])
+
+    # number of parallel processes 
+    pp=8
+    pool=Poolm(pp)
+    results = pool.map(redundancy_parallel, OD_matrix)
+    pool.close()
+    pool.join()
+
+    # create list of max_values to keep track for normalizing purposes
+    max_values=[0]* len(unique_dest_nodes_list)
+    # append the appropriate key-value pairs into output_dict
+    for items in results:
+        for result in items:
+            #format of result: result= [source, target, value, resource number]
+            i=result[3]
+            
+            # determine if the key alreadu exists in output_dict. If it does, append results. If not, create new key entry
+            var = output_dict.get(result[0])
+            # if key (origin) doesn't exist
+            if var is None:
+                output_dict[result[0]] = {f'Res {i} list of redundancy scores': [result[2]]}     # list of scores
+
+                redundancy_dict[result[0]] = {'redundancy scores': [result[2]]}
+                max_values[i] = max(max_values[i], result[2])
+            # if key does exist
+            else:
+                # if key exists but the value doesn't
+                if f'Res {i} list of redundancy scores' not in output_dict[result[0]]:
+                    output_dict[result[0]][f'Res {i} list of redundancy scores'] = [result[2]]
+
+                    redundancy_dict[result[0]]['redundancy scores'].append(result[2])
+                    max_values[i] = max(max_values[i], result[2])
+
+                else:
+                    output_dict[result[0]][f'Res {i} list of redundancy scores'].append(result[2])
+
+                    # update the redundancy score
+                    score = 0
+                    for val in output_dict[result[0]][f'Res {i} list of redundancy scores']:
+                        score += val* np.count_nonzero(output_dict[result[0]][f'Res {i} list of redundancy scores'])
+
+                    redundancy_dict[result[0]]['redundancy scores'][-1] = score
+                    max_values[i] = max(max_values[i], score)
+
+
+    if norm is True:
+        # normalize redundancy scores, and find redundancy score total
+        for source in redundancy_dict:
+            total=0
+            for i, val in enumerate(redundancy_dict[source]['redundancy scores']):
+                norm_val = val / max_values[i]
+                redundancy_dict[source]['redundancy scores'][i] = norm_val
+                total += norm_val
+            redundancy_dict[source]['redundancy score total'] = total
+    else:
+        for source in redundancy_dict:
+            total = 0
+            for val in redundancy_dict[source]['redundancy scores']:
+                total += val
+            redundancy_dict[source]['redundancy score total'] = total
+    
+    # convert dictionary to dataframe, and merge with res_points geodataframe
+    data_df = pd.DataFrame(redundancy_dict).T
+    data_df = data_df.astype({'redundancy score total':'float'})
+    merged_gdf = res_points.merge(data_df, left_on='nearest_node', right_index=True)
+
+    # Spatial join the res_parcels/res_points 
+    res_parcels = gpd.sjoin(res_parcels, merged_gdf)
+
+    # need to convert redundancy scores to individual attribute columns in order to export as a shapefile
+    new_columns = []
+    for i in range(len(dest_points)):
+        new_columns.append(f'r{i}_redun')
+    res_parcels[new_columns] = res_parcels['redundancy scores'].apply(pd.Series)
+    res_parcels=res_parcels.drop('redundancy scores', axis=1)
+    # edit the attributes of shapefile so only attributes we are intereseted in from this function are returned
+    res_attributes = ['geometry', 
+                      'nearest_node',
+                      'redundancy score total']
+    for col in new_columns:
+        res_attributes.append(col)
+    res_parcels.drop(columns=[col for col in res_parcels if col not in res_attributes], inplace=True)
+
+    # delete global variables
+    del G_copy
+    del G_weight_copy
+    del inc_copy
+    del max_length_copy
+
+    # TODO: determine value in returning output dict, or just remove it
+    # FOR NOW: Just return res_parcels
+    return res_parcels
+
+
+def network_redundancy_metric(G,
+                                res_points: gpd.GeoDataFrame,
+                                res_parcels: gpd.GeoDataFrame,
+                                dest_points: list[gpd.GeoDataFrame],
+                                dest_parcels: list[gpd.GeoDataFrame],
+                                G_capacity: str = 'capacity', 
+                                G_weight: str = 'travel_time'):
+    """
+    Modified edge disjoint paths algorithm to determine alternative paths from origins to destinations
+    """
+    
+    # Convert graph to digraph format
+    G = nx.DiGraph(G)
+
+    # Travel times must be whole numbers -  round values up to nearest whole number
+    for x in G.edges:
+        G.edges[x][G_weight] = math.ceil(G.edges[x][G_weight])
+
+    # remove all edges with 0 capacity
+    remove = [(u, v, d) for u, v, d in G.edges(data=True) if d[G_capacity] == 0]
+    G.remove_edges_from(remove)
+
+    # Determine sources and sinks
+    G, unique_origin_nodes, unique_dest_nodes_list, positive_demand, shared_nodes, res_points, dest_parcels, dest_points = nearest_nodes_vertices(G=G, res_points=res_points, dest_parcels=dest_parcels, dest_points=dest_points, G_demand='demand')
+
+    # find the neighbors-of-neighbors of unique_dest_nodes_list to crate artifical edges
+    final_dest_nns=[]
+    # for each resource type,
+    for dest_nodes_list in unique_dest_nodes_list:
+        int_dest_nns=[]
+        # for each option of that resource type,
+        for dest in dest_nodes_list:
+            # for each nearest_node for that option of that type,
+            for node in dest:
+                dest_nn=[]
+                # first set of neighbors
+                dest_n1 = [a for a in G.neighbors(node)]
+                for neighbor in dest_n1:
+                    dest_n2 = [a for a in G.neighbors(neighbor)]
+                    # if neighbor is a new neighbor, remove it
+                    try: 
+                        dest_n2.remove(neighbor)
+                    except ValueError:
+                        pass
+                    dest_nn = dest_nn + dest_n2
+            
+                # remove duplicates 
+                dest_nn = list(set(dest_nn))
+
+            int_dest_nns.append(dest_nn)
+        final_dest_nns.append(int_dest_nns)
+
+    
+    # Set variables that will be used as constants throughout algorithm - set keeping int32 byte criteria in mind
+    artificial_weight_min = 1
+    artificial_capacity = 999999999
+
+    # Add artifical edges from vertices around destinations (their neighbors-of-neighbors nodes) to aggregate points 
+    # identify the destination nodes, and create artifical sink edges
+    # artificial node id tracker - useful in maintianing compatability with dtype
+    dest_node_ids = 99999998
+    # need a list of the sink nodes for each resource
+    sink_nodes = []
+    for i, parcels in enumerate(dest_parcels):
+        # add new entry to sink_nodes
+        # THIS IS DIFFERENT THEN OTHER FUNCTIONS
+        # sink_nodes.append([])
+        dest_node_ids -= 1
+        sink_nodes.append(dest_node_ids)
+        
+        for idx, dest_parcel in parcels.iterrows():
+            dest_node = dest_points[i][dest_points[i].geometry.within(dest_parcel.geometry)]
+            
+            # add new sink node
+            G.add_nodes_from([(dest_node_ids, {'demand': 0})])
+
+            # since we could have multiple dest nodes within a single boundary (multiple resources located at same parcel) need to iterate through dest_node
+            for a, node in dest_node.iterrows():
+                # dest_node_ids -= 1
+                # # add dest_node_ids to the sink_nodes list
+                # sink_nodes[i].append(dest_node_ids)
+                # # add the dest node to the graph
+                # G.add_nodes_from([(dest_node_ids, {'demand': 0})])
+
+                # add links from NEIGHBORS-OF-NEIGHBORS of nearest nodes of parcel to the parcel centroid
+                for nearest_intersection in final_dest_nns[i][idx]:
+                    kwargs = {G_weight: artificial_weight_min,
+                              G_capacity: artificial_capacity}
+                    G.add_edge(nearest_intersection, dest_node_ids, **kwargs)
+
+
+    # make other necessary variables global for parallel processing
+    global G_copy
+    global G_weight_copy
+    global G_capacity_copy
+    global sink_nodes_copy
+    G_copy = copy.deepcopy(G)
+    G_weight_copy = copy.deepcopy(G_weight)
+    G_capacity_copy = copy.deepcopy(G_capacity)
+    sink_nodes_copy = copy.deepcopy(sink_nodes)
+
+    # number of parallel processes 
+    pp=8
+    pool=Poolm(pp)
+    results = pool.map(edge_disjoint_paths, unique_origin_nodes)
+    pool.close()
+    pool.join()
+
+    # convert results to dataframe
+    # create column names
+    columns=['origin']
+    for idx, dest in enumerate(dest_parcels):
+        columns.append(f'r{idx}_redun')
+    results_df = pd.DataFrame(results, columns=columns)
+    results_df.set_index('origin', inplace=True)
+    # for each column, find values equal to -1 and set to maximum for that column
+    for column in results_df.columns:
+        max_value = results_df[column].max()  # Get the maximum value of the column
+        results_df[column] = results_df[column].replace(-1, max_value)  # Replace -1 with the maximum value
+        results_df[column] = results_df[column]/max_value
+    #normalizing dataframe
+    # results_df = results_df.apply(lambda iterator: ((iterator/iterator.max())))
+    results_df['net_redun'] = results_df.sum(axis=1)
+
+    # merge with res_points geodataframe
+    merged_gdf = res_points.merge(results_df, left_on='nearest_node', right_index=True)
+
+    # # Spatial join the res_parcels/res_points 
+    res_parcels = gpd.sjoin(res_parcels, merged_gdf)
+
+    # edit the attributes of shapefile so only attributes we are intereseted in from this function are returned
+    res_attributes = ['geometry', 
+                      'nearest_node',
+                      'net_redun']
+    for col in columns:
+        res_attributes.append(col)
+    res_parcels.drop(columns=[col for col in res_parcels if col not in res_attributes], inplace=True)
+
+
+
+    del G_copy
+    del G_weight_copy
+    del G_capacity_copy
+    del sink_nodes_copy
+
+    return res_parcels
