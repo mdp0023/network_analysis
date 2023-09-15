@@ -1,7 +1,8 @@
-This is the github repository that I will use to store progress of my network analysis code.
+This is the github repository that we are using to document our progress on our resource accessibility model. This repository is currently under consistent development, and users may experience bugs and frequent changes.
 
-This is serving as a backup for the preliminary development work I do on the package.
+Users can refer to our upcoming publication for more information (will be updated once published): Preisser, M., Passalacqua, P., Bixler, R. P., Boyles, S. (2023). A network-baed analysis of critical resource accessibility during floods. Frontiers in Water, Under Review. 
 
-Potential package names:
--HazNet
--Multilayer Analysis of Disaster Network or MAD-Net
+A standalone documation website is also in production. 
+
+For those interested in using our model and framework in their research or in practice, please feel free to reach out to mattpreisser@gmail.com or matthew.preisser@utexas.edu. 
+
