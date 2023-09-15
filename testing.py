@@ -2,7 +2,7 @@
 # MAJOR CODE CLEANING, MAKING SURE EVERYTHING IS DOCUMENTED AND WORKING PROPERLY BEFORE MAJOR TA BUG FIXXES
 
 # setting variables
-import network_exploration_stuff as mynet
+import network_analysis_base as mynet
 import logging
 import sys
 import networkx as nx

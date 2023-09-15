@@ -10,7 +10,7 @@ import matplotlib
 from matplotlib import patches
 from matplotlib.lines import Line2D
 from scipy.interpolate import make_interp_spline
-import network_exploration_stuff as mynet
+import network_analysis_base as mynet
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 

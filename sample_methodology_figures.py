@@ -18,7 +18,7 @@ import osmnx as ox
 import networkx as nx
 import sys
 import logging
-import network_exploration_stuff as mynet
+import network_analysis_base as mynet
 
 # AOI VARIABLES
 # Folder paths

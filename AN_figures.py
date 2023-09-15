@@ -10,7 +10,7 @@ import rasterio as rio
 import geopandas as gpd
 import osmnx as ox
 import matplotlib.pyplot as plt
-import network_exploration_stuff as mynet
+import network_analysis_base as mynet
 import matplotlib as mpl
 
 # this is the code where I will do scratch work for the Austin North Network FIGURE MAKING

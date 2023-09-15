@@ -1,7 +1,7 @@
 # this is the code where I will do scratch work for the Beaumont Port Arthur Network
 
 # Packages
-import network_exploration_stuff as mynet
+import network_analysis_base as mynet
 import matplotlib.pyplot as plt
 import geopandas as gpd
 import rasterio as rio
