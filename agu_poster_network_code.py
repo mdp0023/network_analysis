@@ -5,14 +5,13 @@ import geopandas as gpd
 import rasterio as rio
 
 
-import network_exploration_stuff as mynet
+import network_analysis_base as mynet
 
 # VARIABLES USED #############################################################
 # file path
 path = "/home/mdp0023/Documents/Codes_Projects/\
 network_analysis/Network_Testing_Data/AOI_Testing"
-image_path = "/home/mdp0023/Documents/Codes_Projects/\
-network_analysis/Poster_Graphics"
+image_path = "/home/mdp0023/Documents/Codes_Projects/network_analysis/Poster_Graphics"
 inset_path = "/home/mdp0023/Documents/Codes_Projects/network_analysis/bboxes"
 # AOI without buffer
 aoi_area = '/home/mdp0023/Desktop/external/Data/Network_Data/AOI_Testing/AOI_Boundary/Neighborhood_Network_AOI.shp'
