@@ -12,6 +12,7 @@ import numpy as np
 import logging
 import time
 import math
+import copy
 import os
 
 # ignore shapely deprectiation warnings
@@ -113,6 +114,11 @@ G = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_w
 # G_inun = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_Inundated')
 # # G_TA_flood = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_Traffic_Assignment_AGR_Inundation')
 # G_TA_no_flood = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_Traffic_Assignment_No_Inundation')
+# G = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_2015052518_inundation_TA')
+
+print(list(list(G.edges(data=True))[0][-1].keys()))
+
+
 
 # Inundate network
 # G_inun = mynet.inundate_network(G=G, 
@@ -246,28 +252,84 @@ G = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_w
 # plt.show()
 
 
-# # inundate networks for each time step of flood estimate
-# rasters = os.listdir('/home/mdp0023/Documents/Codes_Projects/TEST_FOLDER/IO/combined_inundation')
-# for inundation_raster in rasters:
-#     mynet.inundate_network(G, 
-#                             f'{folder_path}/AN_Graphs', 
-#                             f'{inundation_path}/{inundation_raster}',
-#                             name=f'AN_Graph_{inundation_raster[:-4]}')
-#     print(f'{inundation_raster} calculated')
+#####
 
-# # # inundate networks for each time step of flood estimate FLUVIAL FLOODING
-# rasters = os.listdir('/home/mdp0023/Documents/Codes_Projects/TEST_FOLDER/IO/combined_inundation')
-# rasters = ['fsm_merge_2015052521.tif',
-#            'fsm_merge_2015052523.tif',
-#            'fsm_merge_2015052600.tif',
-#            'fsm_merge_2015052601.tif',]
+
+# # inundate networks for each time step of flood estimate FLUVIAL FLOODING
+# rasters = ['geoflood_merge_2015052521',
+#            'geoflood_merge_2015052522',
+#            'geoflood_merge_2015052523',
+#            'geoflood_merge_2015052600',
+#            'geoflood_merge_2015052601',
+#            'geoflood_merge_2015052602', 
+#            'geoflood_merge_2015052603',
+#            'geoflood_merge_2015052604',
+#            'geoflood_merge_2015052605',
+#            'geoflood_merge_2015052606',
+#            'geoflood_merge_2015052607',
+#            'geoflood_merge_2015052608',
+#            'geoflood_merge_2015052609',
+#            'geoflood_merge_2015052610',
+#            'geoflood_merge_2015052611',
+#            'geoflood_merge_2015052612',
+#            'geoflood_merge_2015052613',
+#            'geoflood_merge_2015052614',
+#            'geoflood_merge_2015052615',
+#            'geoflood_merge_2015052616',
+#            'geoflood_merge_2015052617'
+#            ]
 # for inundation_raster in rasters:
 #     mynet.inundate_network(G,
 #                             f'{folder_path}/AN_Graphs',
 #                             f'/home/mdp0023/Documents/Codes_Projects/TEST_FOLDER/IO/combined_inundation_copy/{inundation_raster}',
-#                             name=f'AN_Graph_{inundation_raster[15:-4]}_inundation_pluvial')
+#                             name=f'AN_Graph_{inundation_raster[15:]}_inundation_fluvial')
 #     print(f'{inundation_raster} calculated')
 
+# inundate networks for each time step of flood estimate PLUVIAL FLOODING
+# rasters = ['fsm_merge_2015052603',
+#            'fsm_merge_2015052604',
+#            'fsm_merge_2015052605',
+#            'fsm_merge_2015052606',
+#            'fsm_merge_2015052607',
+#            'fsm_merge_2015052608',
+#            'fsm_merge_2015052609',
+#            'fsm_merge_2015052610',
+#            'fsm_merge_2015052611',
+#            'fsm_merge_2015052612',
+#            'fsm_merge_2015052613',
+#            'fsm_merge_2015052614',
+#            'fsm_merge_2015052615',
+#            'fsm_merge_2015052616',
+#            'fsm_merge_2015052617']
+# for inundation_raster in rasters:
+#     mynet.inundate_network(G,
+#                            f'{folder_path}/AN_Graphs',
+#                            f'/home/mdp0023/Documents/Codes_Projects/TEST_FOLDER/IO/combined_inundation_copy/{inundation_raster}',
+#                            name=f'AN_Graph_{inundation_raster[10:]}_inundation_pluvial')
+#     print(f'{inundation_raster} calculated')
+
+# # inundate networks for each time step of flood estimate COMPOUND FLOODING
+# rasters = ['2015052603_inundation.tif',
+#            '2015052604_inundation.tif',
+#            '2015052605_inundation.tif',
+#            '2015052606_inundation.tif',
+#            '2015052607_inundation.tif',
+#            '2015052608_inundation.tif',
+#            '2015052609_inundation.tif',
+#            '2015052610_inundation.tif',
+#            '2015052611_inundation.tif',
+#            '2015052612_inundation.tif',
+#            '2015052613_inundation.tif',
+#            '2015052614_inundation.tif',
+#            '2015052615_inundation.tif',
+#            '2015052616_inundation.tif',
+#            '2015052617_inundation.tif']
+# for inundation_raster in rasters:
+#     mynet.inundate_network(G,
+#                            f'{folder_path}/AN_Graphs',
+#                            f'/home/mdp0023/Documents/Codes_Projects/TEST_FOLDER/IO/combined_inundation_copy/{inundation_raster}',
+#                            name=f'AN_Graph_{inundation_raster[0:10]}_inundation')
+#     print(f'{inundation_raster} calculated')
 
 
 ##########################################################################
@@ -286,32 +348,38 @@ G = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_w
 # TRAFFIC ASSIGNMENT AND CORRESPONDING SPTT
 # G_output, AEC_list, TSTT_list, SPTT_list, RG_list, iter = mynet.traffic_assignment(G=G,
 #                                                                                    res_points=res_points,
-#                                                                                    dest_points=food_points,
-#                                                                                    dest_parcels=food_parcels,
+#                                                                                    dest_points=all_resource_points,
+#                                                                                    dest_parcels=all_resource_parcels,
 #                                                                                    G_capacity='capacity',
 #                                                                                    G_weight='travel_time',
 #                                                                                    algorithm='path_based',
 #                                                                                    method='MSA',
 #                                                                                    link_performance='BPR',
 #                                                                                    termination_criteria=[
-#                                                                                        'iter', 1],
+#                                                                                        'iter', 10],
 #                                                                                    dest_method='multiple',
 #                                                                                    sparse_array=True)
 
-# iterate through rasters and run TA assignment for all resources
-# rasters = os.listdir('/home/mdp0023/Documents/Codes_Projects/TEST_FOLDER/IO/combined_inundation')
-# rasters = ['2015052519_inundation.tif',
-#            '2015052520_inundation.tif',
-#            '2015052521_inundation.tif',
-#            '2015052522_inundation.tif',
-#            '2015052523_inundation.tif',
-#            '2015052600_inundation.tif',
-#            '2015052601_inundation.tif',
-#            '2015052602_inundation.tif']
+# iterate through graphs and run TA assignment for all resources
 
-# for inundation_raster in rasters:
-#     t_stamp=inundation_raster[:-4]
-#     G = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name=f'AN_Graph_{t_stamp}')
+tstamps =   ['2015052604',
+           '2015052605',
+           '2015052606',
+           '2015052607',
+           '2015052608',
+           '2015052609',
+           '2015052610',
+           '2015052611',
+           '2015052612',
+           '2015052613',
+           '2015052614',
+           '2015052615',
+           '2015052616',
+           '2015052617']
+
+
+# for tstamp in tstamps:
+#     G = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name=f'AN_Graph_{tstamp}_inundation')
 
 
 #     time1=time.time()
@@ -329,17 +397,37 @@ G = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_w
 #                                                                                         sparse_array=True)
 #     time2=time.time()
 #     # save graph
-#     mynet.save_2_disk(G=G_output, path=f'{folder_path}/AN_Graphs', name=f'AN_Graph_{t_stamp}_TA')
+#     mynet.save_2_disk(G=G_output, path=f'{folder_path}/AN_Graphs', name=f'AN_Graph_{tstamp}_inundation_TA')
     
-#     # save outputs
+#     # save outputss
 #     list_dict={'AECs' : AEC_list,
 #             'TSTTs' : TSTT_list,
 #             'SPTTs' : SPTT_list,
 #             'RGs' : RG_list,
 #             'iters' : iter}
 #     outputdf = pd.DataFrame(list_dict)
-#     outputdf.to_csv(f'{folder_path}/AN_Graphs/TA_Summary_Files/{t_stamp}.csv', index=False)
-#     print(f'{t_stamp} calculated')
+#     outputdf.to_csv(f'{folder_path}/AN_Graphs/TA_Summary_Files/{tstamp}_inundation.csv', index=False)
+
+# FLOW DECOMPOSITION
+# for tstamp in tstamps:
+#     G = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name=f'AN_Graph_{tstamp}_inundation_TA')
+
+#     res_points1=copy.copy(res_points)
+#     res_parcels1=copy.copy(res_parcels)
+#     all_resource_points1=copy.copy(all_resource_points)
+#     all_resource_parcels1 = copy.copy(all_resource_parcels)
+#     output = mynet.flow_decomposition(G=G,
+#                                         res_points=res_points1,
+#                                         res_parcels=res_parcels1,
+#                                         dest_points=all_resource_points1,
+#                                         dest_parcels=all_resource_parcels1,
+#                                         G_demand='demand',
+#                                       G_capacity='inundation_capacity_agr',
+#                                         G_weight='Weight_Array_Iter',
+#                                         dest_method='multiple')
+#     output[2].to_file(f'/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Graphs/Flow_decomp/{tstamp}_inundation_res_parcel_flow_decomp.shp')
+
+#     print(f'{tstamp} calculated')
 
 
 # print(f'AEC_list: {AEC_list}')
@@ -349,32 +437,6 @@ G = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_w
 # print(f'iter: {iter}')
 
 ##########################################################################
-# # FLOW DECOMPOSITION 
-# rasters = [ #'2015052518_inundation.tif',
-#             # '2015052519_inundation.tif',
-#         #    '2015052520_inundation.tif',
-#         #    '2015052521_inundation.tif',
-#         #    '2015052522_inundation.tif',
-#         #    '2015052523_inundation.tif',
-#         #    '2015052600_inundation.tif',
-#         #    '2015052601_inundation.tif',
-#            '2015052602_inundation.tif']
-
-# for inundation_raster in rasters:
-#     t_stamp=inundation_raster[:-4]
-#     G = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name=f'AN_Graph_{t_stamp}_TA')
-
-#     output = mynet.flow_decomposition(G=G,
-#                                         res_points=res_points,
-#                                         res_parcels=res_parcels,
-#                                         dest_points=all_resource_points,
-#                                         dest_parcels=all_resource_parcels,
-#                                         G_demand='demand',
-#                                       G_capacity='inundation_capacity_agr',
-#                                         G_weight='Weight_Array_Iter',
-#                                         dest_method='multiple')
-#     output[2].to_file(f'/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Graphs/Flow_decomp/{t_stamp}_res_parcel_flow_decomp.shp')
-
 # # NO FLOOD TRAVEL TIME 
 # G = mynet.read_graph_from_disk(
 #     path=f'{folder_path}/AN_Graphs', name=f'AN_Graph_2015052516_inundation_TA_pre_inundation')
@@ -409,6 +471,74 @@ G = mynet.read_graph_from_disk(path=f'{folder_path}/AN_Graphs', name='AN_Graph_w
 
 
 # plt.show()
+
+
+############################################################################################
+# INDIVIDUAL REDUNDNACY CALCULATION
+# times=['2015052516',
+#            '2015052517',
+#            '2015052518',
+#            '2015052519',
+#            '2015052520',
+#            '2015052521',
+#            '2015052522',
+#            '2015052523',
+#            '2015052600',
+#            '2015052601',
+#            '2015052602',
+#            '2015052603',
+#            '2015052617']
+# for t in times:
+
+#     G = mynet.read_graph_from_disk(
+#         path=f'{folder_path}/AN_Graphs', name=f'AN_Graph_{t}_inundation_TA')
+
+#     time1=time.time()
+#     output8 = mynet.redundancy_metric(G,
+#                                     res_points=res_points,
+#                                     res_parcels=res_parcels,
+#                                     dest_points=all_resource_points,
+#                                     dest_parcels=all_resource_parcels,
+#                                     inc=1500,    # additional for every 15 seconds 
+#                                     max_length=90000,  # set to 15 min X 60 for seconds (X100 for current iteration of TA)
+#                                     G_capacity='inundation_capacity_agr',
+#                                     G_weight='Weight_Array_Iter')
+
+#     # save to pull into qgis
+#     output8.to_file(
+#         f'/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Redundancy/individual_redundancy/individual_redundancy_{t}.shp')
+
+#     time2=time.time()
+#     print(time2-time1)
+#     print(f'{t} individual redundancy calculated')
+
+# NETWORK REDUNDNACY CALCULATION
+name=['_', '_fluvial_', '_pluvial_']
+times = ['2015052603']
+for idx, ftype in enumerate(['', '_fluvial','_pluvial']):
+    for t in times:
+
+        G = mynet.read_graph_from_disk(
+            path=f'{folder_path}/AN_Graphs', name=f'AN_Graph_{t}_inundation{ftype}')
+        
+        time1=time.time()
+        output9 = mynet.network_redundancy_metric(G=G,
+                                                res_points=res_points,
+                                                res_parcels=res_parcels,
+                                                dest_points=all_resource_points,
+                                                dest_parcels=all_resource_parcels,
+                                                G_capacity='inundation_capacity_agr', # edges with 0 capacity removed
+                                                G_weight='travel_time')        # I don't think TA weight needs to be used, weight shouldn't play role in this calc
+                                                # G_weight='Weight_Array_Iter')
+
+        # save to pull into qgis
+        output9.to_file(
+            f'/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Redundancy/network_redundancy/network_redundancy{name[idx]}{t}_n2.shp')
+        time2=time.time()
+        print(time2-time1)
+        print(f'{ftype} {t} individual redundancy calculated')
+
+
 
 ##############################################################################
 # # PLOT INUNDATED NETWORK BY DEPTH ON ROADWAY
