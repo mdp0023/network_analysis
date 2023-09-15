@@ -45,12 +45,12 @@ aoi_area = f'{f_boundaries}/Neighborhood_Network_AOI.shp'
 # boundary with buffer
 aoi_buffer = f'{f_boundaries}/Neighborhood_Network_AOI_Buf_1km.shp'
 # Centroids of res parcels, food marts, and 2nd resource
-res_points_loc = f'{f_res_shp}/Residential_Parcels_Points_Network_AOI.shp'
+res_points_loc = f'{f_res_shp}/Residential_Parcels_Points_Network_AOI_edited.shp'
 food_points_loc = f'{f_food_shp}/Food_Marts_Points_Network_AOI.shp'
 other_points_loc = f'{f_other_shp}/Other_Resource2_Points_Network_AOI.shp'
 other_points_loc2 = f'{f_other_shp2}/Other_Resource_Points_Network_AOI_edited.shp'
 # Shapefiles of res parcels, food marts, and 2nd resource
-res_parcels = f'{f_res_shp}/Residential_Parcels_Network_AOI.shp'
+res_parcels = f'{f_res_shp}/Residential_Parcels_Network_AOI_edited.shp'
 food_parcels = f'{f_food_shp}/Food_Marts_Network_AOI.shp'
 other_parcels = f'{f_other_shp}/Other_Resource2_Network_AOI.shp'
 other_parcels2 = f'{f_other_shp2}/Other_Resource_Network_AOI_edited.shp'
@@ -86,6 +86,9 @@ aoi_area = gpd.read_file(aoi_area)
 other_points2 = gpd.read_file(other_points_loc2)
 # shapefile of other resource parcels
 other_locs2 = gpd.read_file(other_parcels2)
+
+all_resource_points = [food_points, other_points, other_points2]
+all_resource_parcels = [food_locs, other_locs, other_locs2]
 
 # FUNCTION TESTING
 
@@ -209,74 +212,63 @@ output3d = mynet.min_cost_flow_parcels(network, res_points, [food_points, other_
 # #                                     dest_method='multiple')
 
 
-# # # traffic_assignment
+# # # TRAFFIC ASSIGNMENT
+# output7a = mynet.traffic_assignment(network, 
+#                                     res_points,
+#                                     food_points,
+#                                     food_locs,
+#                                     # G_weight='travel_time',
+#                                     G_weight='inundation_travel_time_agr',
+#                                     G_capacity='inundation_capacity_agr',
+#                                    dest_method='multiple',
+#                                    termination_criteria=['iter',3], 
+#                                    algorithm='path_based',
+#                                    method='MSA',
+#                                    sparse_array=True)
+# tstta = [round(num, 6) for num in output7a[2]]
+# sptta = [round(num, 6) for num in output7a[3]]
+# rga = [round(num, 6) for num in output7a[4]]
 
-output7a = mynet.traffic_assignment(network, 
+
+output7a = mynet.traffic_assignment(network,
                                     res_points,
                                     food_points,
                                     food_locs,
-                                    # G_weight='travel_time',
-                                    G_weight='inundation_travel_time_agr',
-                                    G_capacity='inundation_capacity_agr',
-                                   dest_method='multiple',
-                                   termination_criteria=['iter',3], 
-                                   algorithm='path_based',
-                                   method='MSA',
-                                   sparse_array=True)
+                                    G_weight='travel_time',
+                                    dest_method='multiple',
+                                    termination_criteria=['iter', 1],
+                                    algorithm='path_based',
+                                    method='MSA',
+                                    sparse_array=True)
 tstta = [round(num, 6) for num in output7a[2]]
 sptta = [round(num, 6) for num in output7a[3]]
 rga = [round(num, 6) for num in output7a[4]]
 print(rga)
-for u, v, data in network.edges(data=True):
-    data["capacity"] *= 0.005
 
-print('newrun')
-time1=time.time()
-output7b = mynet.traffic_assignment(network,
-                                    res_points,
-                                    [food_points, other_points, other_points2],
-                                    [food_locs, other_locs, other_locs2],
-                                    dest_method='multiple',
-                                    termination_criteria=['iter', 10],
-                                    algorithm='path_based',
-                                    method='MSA',
-                                    sparse_array=True,
-                                    # G_weight='inundation_travel_time_agr',
-                                    # G_capacity='inundation_capacity_agr'
-                                    )
-time2=time.time()
-print(time2-time1)
+# print('Individual redundancy')
+# # INDIVIDUAL REDUNDANCY
+# time1=time.time()
+# output8 = mynet.redundancy_metric(output7a[0],
+#                                   res_points=res_points,
+#                                   res_parcels=res_locs,
+#                                   dest_points=all_resource_points,
+#                                   dest_parcels=all_resource_parcels)
+# output8.to_file(
+#     '/home/mdp0023/Desktop/external/Data/Network_Data/AOI_Testing/redundancy.shp')
+
+# time2=time.time()
+# print(time2-time1)
 
 
+# NETWORK REDUNDANCY
+print('network redundnacy')
+network = mynet.read_graph_from_disk(path=f_graphs, name='AOI_Graph_Inundated')
 
-# output6c = mynet.flow_decomposition(output7a[0],
-#                                     res_points,
-#                                     food_points,
-#                                     res_locs,
-#                                     food_locs,
-#                                     dest_method='multiple',
-#                                     G_weight='Weight_Array_Iter',
-#                                     G_capacity='inundation_capacity_agr')
-
-# output6c[2].to_file('/home/mdp0023/Desktop/external/Data/Network_Data/AOI_Testing/decomp_res_test.shp')
-
-
-
-
-# tsttb = [round(num, 6) for num in output7b[2]]
-# spttb = [round(num, 6) for num in output7b[3]]
-# rgb = [round(num, 6) for num in output7b[4]]
-
-# # print(tstta)
-# # print(sptta)
-# # print(rga)
-
-# print(tsttb)
-# print(spttb)
-# print(rgb)
-
-
-# # print(list(list(output7[0].edges(data=True))[0][-1].keys()))
-
-# # mynet.plot_aoi(output7b[0], res_locs, [food_locs, other_locs, other_locs2], edge_width='TA_Flow')
-# # plt.show()
+output9=mynet.network_redundancy_metric(G=network,
+                                        res_points=res_points,
+                                        res_parcels=res_locs,
+                                        dest_points=all_resource_points,
+                                        dest_parcels=all_resource_parcels,
+                                        G_capacity='inundation_capacity_agr')
+output9.to_file(
+    '/home/mdp0023/Desktop/external/Data/Network_Data/AOI_Testing/network_redundancy_inun.shp')
