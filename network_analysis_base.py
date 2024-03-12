@@ -42,7 +42,7 @@ from networkx.algorithms.flow import build_residual_network
 
 
 # testing sknetwork for faster shortest path calcualtions
-import sknetwork as skn
+# import sknetwork as skn
 
 from concurrent.futures import ThreadPoolExecutor
 

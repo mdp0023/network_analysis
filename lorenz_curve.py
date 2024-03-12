@@ -19,9 +19,9 @@ plt.rcParams['font.family'] = "ubuntu"
 
 
 # filepath variables
-network_data_fp = '/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North'
+network_data_fp = '/media/mdp0023/extradrive1/Data/Network_Data/Austin_North'
 svi_data_fp = '/home/mdp0023/Documents/Codes_Projects/SVI_Code/Travis_County'
-graphs_fp = '/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Graphs'
+graphs_fp = '/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Graphs'
 
 # Load variables
 # SVI Shapefile: specific to 2015, relevant to the flood
@@ -1100,21 +1100,22 @@ def individual_reliability_aggregate(axes,
         # Gini patch properties
         props = dict(boxstyle='square', facecolor='lightgray', alpha=0.5)
         # text box in upper left in axes coords
-        axes[row][column].text(0.05, 0.95, textstr, transform=axes[row][column].transAxes, fontsize=8,
+        axes[row][column].text(0.05, 0.95, textstr, transform=axes[row][column].transAxes, fontsize=10,
                                 verticalalignment='top', bbox=props)
 
         # Plot quartile information
         the_table = axes[row][column].table(cellText=table_vals,
-                                            # colWidths=[0.10]*4,
+                                            colWidths=[0.10]*4,
                                             rowColours=row_colors,
                                             colColours=['lightgrey', 'lightgrey',
                                                         'lightgrey', 'lightgrey'],
                                             rowLabels=row_labels,
                                             colLabels=col_labels,
-                                            loc='bottom')
+                                            loc='lower right')
+                                            # loc='bottom')
         the_table.auto_set_font_size(False)
-        the_table.set_fontsize(8)
-        the_table.scale(1, 0.8)
+        the_table.set_fontsize(10)
+        the_table.scale(1, 1)
         for i, val in enumerate(methods):
             the_table[i+1, -1].get_text().set_color('white')
 
@@ -1127,8 +1128,8 @@ def individual_reliability_aggregate(axes,
         axes[row][column].set_ylim(0, 1)
 
         # Set x and y tick markers
-        axes[row][column].set_xticks(ticks=[0.0, 0.25, 0.5, 0.75, 1.0], labels=[' ', ' ', ' ', ' ', ' '])
-                                    #labels=[' ', '25%', '50%', '75%', '100%'])
+        axes[row][column].set_xticks(ticks=[0.0, 0.25, 0.5, 0.75, 1.0], #labels=[' ', ' ', ' ', ' ', ' '])
+                                    labels=[' ', '25%', '50%', '75%', '100%'])
         axes[row][column].set_yticks(ticks=[0.0, 0.25, 0.5, 0.75, 1.0],
                                     labels=['0%', '25%', '50%', '75%', '100%'])
 
@@ -2509,8 +2510,8 @@ def reliability_preprocess_func():
     names=['grocery','er','pharm','police','conven','fire','ems','fuel']
     times = ['2015052603']
     reliability_preprocess(cost_atrs=cost_atrs,
-                        load_fpath='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Graphs/Flow_decomp',
-                        save_fpath='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Reliability/individual_reliability',
+                        load_fpath='/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Graphs/Flow_decomp',
+                        save_fpath='/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Reliability/individual_reliability',
                         svi=svi,
                         times=times,
                         extension='_inundation_res_parcel_flow_decomp.shp',
@@ -2547,17 +2548,17 @@ def num_flooded_roads():
                 suffixes=suffixes,
                 closed_road_var='inundation_capacity_agr')
 
-num_flooded_roads()
-plt.show()
+# num_flooded_roads()
+# plt.show()
 
 ##############################################
 # INDIVIDUAL EQUITY
 def ind_equity_func():
-    reliability_fpath = '/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Reliability/individual_reliability'
+    reliability_fpath = '/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Reliability/individual_reliability'
     reliability_prefix='agg_individual_reliability'
-    redundancy_fpath='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Redundancy/individual_redundancy/'
+    redundancy_fpath='/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Redundancy/individual_redundancy/'
     redundancy_extension='individual_redundancy_'
-    recoverability_fpath='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Reliability/individual_reliability'
+    recoverability_fpath='/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Reliability/individual_reliability'
     recoverability_init_time=2015052518
     recoverability_prefix='agg_individual_reliability'
     recoverability_times = ['2015052522', '2015052523',
@@ -2622,7 +2623,7 @@ def net_recoverability_func():
                 fontsize=12)
 
     network_recoverability(axes=[[axes]],
-                            fpath='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Graphs',
+                            fpath='/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Graphs',
                             prefix='AN_Graph',
                             svi=svi,
                             init_time='2015052518',
@@ -2657,7 +2658,7 @@ def network_recoverability_ts_func():
                 '2015052616', '2015052617']
     ftypes = ['inundation' , 'inundation_fluvial', 'inundation_pluvial']
     percs=[0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]
-    network_recovoverability_cumulative_ts(fpath='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Graphs',
+    network_recovoverability_cumulative_ts(fpath='/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Graphs',
                                            prefix='AN_Graph',
                                            svi=svi,
                                            init_time='2015052518',
@@ -2691,19 +2692,19 @@ def house_recoverability_func():
                 weight='bold',
                 x=0.5,
                 fontsize=12)
-    fig.supylabel('Norm. Cumsum. Residential Recovery',
+    fig.supylabel('Norm. Cumsum. Household Recovery',
                 weight='bold',
                 fontsize=12)
 
     individual_recoverability(axes=[[axes]],
                             svi=svi,
-                            fpath='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Reliability/individual_reliability',
+                            fpath='/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Reliability/individual_reliability',
                             init_time=2015052518,
                             times=times,
                             prefix='agg_individual_reliability',
                             columns=1,
                             methods=['SVI_scaled', 'Factor 1', 'Factor 2'],
-                            perc=0.95)
+                            perc=0.5)
     plt.tight_layout()
     plt.subplots_adjust(top = 0.938,
                         bottom = 0.162,
@@ -2729,7 +2730,7 @@ def house_recoverability_ts_func():
             '2015052614', '2015052615',
             '2015052616', '2015052617']
     individual_recoverability_cumulative_ts(svi=svi,
-                                            fpath='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Reliability/individual_reliability',
+                                            fpath='/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Reliability/individual_reliability',
                                             init_time=2015052518,
                                             times=times,
                                             prefix='agg_individual_reliability',
@@ -2743,7 +2744,7 @@ def house_recoverability_ts_func():
 def house_redundancy_func():
     methods = ['SVI_scaled', 'Factor 1', 'Factor 2']
     cost_atr = 'redundancy'
-    fpath='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Redundancy/individual_redundancy/'
+    fpath='/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Redundancy/individual_redundancy/'
 
     times = ['2015052518','2015052520','2015052522',
             '2015052600','2015052602','2015052604',
@@ -2783,7 +2784,7 @@ def house_redundancy_func():
 def net_redundancy_func():
     method = 'SVI_scaled'
     variable='net_redun'
-    fpath='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Redundancy/network_redundancy'
+    fpath='/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Redundancy/network_redundancy'
 
     times=['2015052518','2015052522','2015052602']
 
@@ -2845,7 +2846,7 @@ def house_reliability_func():
 
 
     individual_reliability_aggregate(axes=axes,
-                                    fpath='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Reliability/individual_reliability',
+                                    fpath='/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Reliability/individual_reliability',
                                     times=times,
                                     prefix='agg_individual_reliability',
                                     columns=3,
@@ -2886,7 +2887,7 @@ def net_reliability_func():
     ftypes = ['inundation' , 'inundation_fluvial', 'inundation_pluvial']
 
     network_reliability(axes=axes,
-                        fpath='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Graphs',
+                        fpath='/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Graphs',
                                 prefix='AN_Graph',
                                 svi=svi,
                                 method='SVI_scaled',
@@ -2925,7 +2926,7 @@ def net_reliability_func_individual():
     ftypes = ['inundation', 'inundation_fluvial', 'inundation_pluvial']
 
     network_reliability(axes=[[axes]],
-                        fpath='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Graphs',
+                        fpath='/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Graphs',
                         prefix='AN_Graph',
                         svi=svi,
                         method='SVI_scaled',
@@ -2949,9 +2950,105 @@ def net_reliability_func_individual():
 
 
 
+###### Figures for proposal paper
+    
+
+# # NETWORK RELIABILITY
+# fig, axes = plt.subplots(1, 3, figsize=(190*mm, 80*mm))
+# fig.set_facecolor('none')
+# # fig.suptitle('Lorenz Curves of Impacted Roads',
+# #              fontsize=14, weight='bold')
+# fig.supxlabel('Social Vulnerability Index Percentile',
+#             weight='bold',
+#             x=0.5,
+#             fontsize=12)
+# fig.supylabel('Network Reliability',
+#             weight='bold',
+#             fontsize=12)
+# plt.tight_layout()
+# times = ['2015052518','2015052520','2015052522']
+# ftypes = ['inundation' , 'inundation_fluvial', 'inundation_pluvial']
+# network_reliability(axes=[axes],
+#                     fpath='/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Graphs',
+#                             prefix='AN_Graph',
+#                             svi=svi,
+#                             method='SVI_scaled',
+#                             variable='agr_no_cap',
+#                             times=times,
+#                             annotations=True,
+#                             columns=3,
+#                             ftypes=ftypes)
+# plt.show()
+    
+# HOUSEHOLD EQUITY: reliability 100% rank weight
+reliability_fpath = '/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Reliability/individual_reliability'
+reliability_prefix='agg_individual_reliability'
+
+
+fig, axes = plt.subplots(1, 1, figsize=(5, 5))
+fig.set_facecolor('none')
+fig.supxlabel('Indicator Percentile',
+            weight='bold',
+            x=0.5,
+            fontsize=12)
+fig.supylabel('Normalized Cumulative Sum of Travel Times',
+            weight='bold',
+            fontsize=12)
+svi_weight=None
+time = '2015052522'
+
+
+individual_reliability_aggregate([[axes]],
+                                         prefix=reliability_prefix,
+                                         fpath=reliability_fpath,
+                                         times=[time],
+                                         columns=1,
+                                         methods=['SVI_scaled', 'Factor 1', 'Factor 2'],
+                                         svi_weight=svi_weight)
+
+    
+# edit Title 
+axes.set_title("Lorenz Curves of Household Resource Reliability", fontdict={'weight': 'bold', 'style': 'italic', 'fontsize': 12})
+
+
+plt.show()
 
 
 
+# #HOUSEHOLD EQUITY: redundnacy 100% rank weight
+# redundancy_fpath='/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Redundancy/individual_redundancy/'
+# redundancy_extension='individual_redundancy_'
+
+
+# fig, axes = plt.subplots(1, 1, figsize=(80*mm, 80*mm))
+# fig.set_facecolor('none')
+# fig.supxlabel('Indicator Percentile',
+#             weight='bold',
+#             x=0.5,
+#             fontsize=12)
+# fig.supylabel('Redundancy Equity',
+#             weight='bold',
+#             fontsize=12)
+# svi_weight=1
+# time = '2015052522'
+
+# individual_redundancy([[axes]],
+#                         svi=svi,
+#                         fpath=redundancy_fpath,
+#                         times=[time],
+#                         extension=redundancy_extension,
+#                         columns=1,
+#                         methods=['SVI_scaled', 'Factor 1', 'Factor 2'],
+#                         atr='redundancy',
+#                         annotations=True,
+#                         svi_weight=svi_weight)
+    
+# # edit column and row headings 
+# axes.set_title(f'{np.round(svi_weight*100,1)}% Rank Weight', style='italic', fontsize=12)
+
+# plt.show()
+
+#######################
 # functions no longer in use
 def lorenz_curve_road_impacts_timeseries(fig,
                                          axes,
@@ -2982,7 +3079,7 @@ def lorenz_curve_road_impacts_timeseries(fig,
         ginis = [0 * len(ftypes)]
         for b, ftype in enumerate(ftypes):
 
-            network = mynet.read_graph_from_disk(path='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Graphs',
+            network = mynet.read_graph_from_disk(path='/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Graphs',
                                                  name=f'AN_Graph_{time}_{ftype}')
             gdf_edges = ox.graph_to_gdfs(G=network, nodes=False)
 
@@ -3146,7 +3243,7 @@ def lorenz_curve_road_impacts_individual(fig,
         table_vals = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
         for b, ftype in enumerate(ftypes):
 
-            network = mynet.read_graph_from_disk(path='/home/mdp0023/Desktop/external/Data/Network_Data/Austin_North/AN_Graphs',
+            network = mynet.read_graph_from_disk(path='/media/mdp0023/extradrive1/Data/Network_Data/Austin_North/AN_Graphs',
                                                  name=f'AN_Graph_{time}_{ftype}')
             gdf_edges = ox.graph_to_gdfs(G=network, nodes=False)
 

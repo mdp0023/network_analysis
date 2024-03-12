@@ -1,4 +1,9 @@
 {
     "esbonio.sphinx.confDir": "",
-    "todo-tree.tree.scanMode": "current file"
+    "todo-tree.tree.scanMode": "current file",
+    "workbench.colorCustomizations": {
+        "activityBar.background": "#103518",
+        "titleBar.activeBackground": "#164A22",
+        "titleBar.activeForeground": "#F3FBF5"
+    }
 }
