@@ -1,6 +1,6 @@
 This is the github repository that we are using to document our progress on our resource accessibility model. This repository is currently under consistent development, and users may experience bugs and frequent changes.
 
-Users can refer to our upcoming publication for more information (will be updated once published): Preisser, M., Passalacqua, P., Bixler, R. P., Boyles, S. (2023). A network-baed analysis of critical resource accessibility during floods. Frontiers in Water, Under Review. 
+Users can refer to our publication for more information: Preisser, M., Passalacqua, P., Bixler, R. P., Boyles, S. (2023). A network-baed analysis of critical resource accessibility during floods. Frontiers in Water, https://doi.org/10.3389/frwa.2023.1278205. 
 
 A standalone documation website is also in production. 
 
